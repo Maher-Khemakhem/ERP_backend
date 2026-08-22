@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: ERP
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/supermarket_erp
+    username: postgres
+    password: ${DB_PASSWORD:postgres}
+
+  jpa:
+    hibernate:
+      # Use Flyway/Liquibase for real schema management once we add
+      # migrations in a later part - "update" is fine for local bootstrap only.
+      ddl-auto: update
+    open-in-view: false   # never leave this true in a real app - hides N+1s
+
+  modulith:
+    events:
+      # Spring Modulith's event publication registry = our outbox.
+      # Failed/unprocessed events are persisted here and can be
+      # externalized to Rabbit/Kafka later with almost no code change.
+      jdbc-schema-initialization:
+        enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, modulith
+
+server:
+  port: 8080
+
+logging:
+  level:
+    org.springframework.modulith: INFO

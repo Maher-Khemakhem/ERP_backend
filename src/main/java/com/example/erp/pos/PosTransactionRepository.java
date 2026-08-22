@@ -1,0 +1,7 @@
+package com.example.erp.pos;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.UUID;
+
+interface PosTransactionRepository extends JpaRepository<PosTransaction, UUID> {
+}
