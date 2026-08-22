@@ -19,8 +19,6 @@ import java.util.stream.Collectors;
  * C'est le SEUL point d'entrée pour modifier le stock. Personne, ni à
  * l'intérieur ni à l'extérieur du module, ne doit manipuler un lot
  * directement — tout passe par receive(), sell(), reserve(), writeOff().
- * C'est cette règle qui garantit qu'on ne peut jamais vendre plus que
- * ce qui est disponible, ni corrompre la logique FEFO.
  */
 @Entity
 @Table(name = "stock_level", schema = "inventory")
@@ -52,24 +50,16 @@ public class StockLevel {
         return new StockLevel(UUID.randomUUID(), productId);
     }
 
-    /**
-     * Réception d'un nouveau lot (venant du module Procurement via
-     * l'événement GoodsReceived). Augmente le stock disponible.
-     */
+    /** Réception d'un nouveau lot (venant du module Procurement via GoodsReceived). */
     public void receive(Lot lot, Quantity quantity) {
         lots.add(new LotEntry(lot, quantity, Quantity.zero(quantity.unitType())));
         domainEvents.add(StockReceived.of(productId, lot.getId(), quantity));
     }
 
     /**
-     * Vend une quantité en suivant la règle FEFO (First-Expire-First-Out) :
-     * on consomme d'abord les lots qui expirent le plus tôt.
+     * Vend une quantité en suivant la règle FEFO (First-Expire-First-Out).
      * Peut puiser dans plusieurs lots si un seul ne suffit pas.
      *
-     * @param reorderPoint seuil de réapprovisionnement du produit (vient
-     *                      de Product.getReorderPoint(), fourni par la
-     *                      couche application — StockLevel ne connaît
-     *                      pas Product directement)
      * @throws InsufficientStockException si la quantité disponible totale
      *         est inférieure à la quantité demandée
      */
@@ -84,11 +74,7 @@ public class StockLevel {
         }
     }
 
-    /**
-     * Réserve du stock (ex. commande en attente de paiement) sans le
-     * déduire définitivement — le stock réservé n'est plus "disponible"
-     * mais reste physiquement en rayon jusqu'à confirmation de vente.
-     */
+    /** Réserve du stock sans le déduire définitivement. */
     public void reserve(Quantity quantity) {
         reserve(quantity, today());
     }
@@ -164,9 +150,9 @@ public class StockLevel {
     /**
      * Compare le stock disponible total au seuil de réapprovisionnement.
      * Publie LowStockThresholdReached si on est passé EN DESSOUS du seuil.
-     *
-     * Suppose que tous les lots d'un même produit partagent le même
-     * UnitType (cohérent avec Product.unitType, fixe par produit).
+     * L'événement ne fait que signaler le fait — aucune action
+     * automatique n'est déclenchée en aval (voir LowStockAlert côté
+     * Procurement : une simple notification, pas une commande auto).
      */
     private void checkReorderPoint(int reorderPoint) {
         if (lots.isEmpty()) {

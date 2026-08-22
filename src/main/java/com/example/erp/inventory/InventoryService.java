@@ -11,16 +11,12 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Service applicatif du module Inventory — orchestration des cas
- * d'usage (use cases). SEULE porte d'entrée publique du module pour
- * agir sur le stock ; les autres modules (ou contrôleurs REST) passent
- * par ces méthodes, jamais par StockLevel directement.
+ * Service applicatif du module Inventory — SEULE porte d'entrée
+ * publique pour agir sur le stock.
  *
  * Pattern appliqué systématiquement : charger l'aggregate → appeler
  * son comportement → sauvegarder → publier les événements accumulés,
- * le tout dans une seule transaction (garantie outbox via Spring
- * Modulith : la sauvegarde et l'enregistrement des événements sont
- * atomiques).
+ * dans une seule transaction.
  */
 @Service
 class InventoryService {
@@ -81,12 +77,6 @@ class InventoryService {
                         "Produit introuvable : " + productId));
     }
 
-    /**
-     * Publie tous les événements accumulés par l'aggregate pendant
-     * l'opération, puis les vide. Spring Modulith intercepte chaque
-     * publish() et l'enregistre dans son registre (outbox) avant de
-     * router l'événement vers les @ApplicationModuleListener concernés.
-     */
     private void publishAndClear(StockLevel stock) {
         List<DomainEvent> pending = stock.domainEvents();
         pending.forEach(events::publishEvent);

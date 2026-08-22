@@ -21,11 +21,11 @@ import org.springframework.stereotype.Component;
  * l'app crashe pendant son exécution, Modulith réessaiera au redémarrage.
  */
 @Component
-class TransactionCompletedListener {
+class InventoryTransactionCompletedListener {
 
     private final InventoryService inventoryService;
 
-    TransactionCompletedListener(InventoryService inventoryService) {
+    InventoryTransactionCompletedListener(InventoryService inventoryService) {
         this.inventoryService = inventoryService;
     }
 

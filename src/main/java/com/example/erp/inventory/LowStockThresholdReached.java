@@ -1,15 +1,10 @@
 package com.example.erp.inventory;
 
-
 import com.example.erp.shared.DomainEvent;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Publié quand le stock disponible d'un produit passe sous son seuil
- * de réapprovisionnement. Le module Procurement l'écoute pour
- * suggérer/déclencher une commande fournisseur.
- */
+/** Publié quand le stock disponible d'un produit passe sous son seuil. */
 public record LowStockThresholdReached(
         UUID eventId,
         Instant occurredAt,
