@@ -69,6 +69,11 @@ class InventoryService {
         stockRepository.save(stock);
         publishAndClear(stock);
     }
+    @Transactional(readOnly = true)
+    public StockLevel getStockLevel(UUID productId) {
+        return stockRepository.findByProductId(productId)
+                .orElseThrow(() -> new IllegalArgumentException("Aucun stock pour ce produit : " + productId));
+    }
 
     private int reorderPointFor(UUID productId) {
         return productRepository.findById(productId)

@@ -73,9 +73,11 @@ public class PosTransaction {
      * AVANT d'appeler cette méthode) — PosTransaction ne fait que
      * l'accumuler.
      */
-    public void addLine(UUID productId, Quantity quantity, Money calculatedPrice) {
+    public UUID addLine(UUID productId, Quantity quantity, Money calculatedPrice) {
         requireInProgress();
-        lines.add(TransactionLine.of(productId, quantity, calculatedPrice));
+        TransactionLine line = TransactionLine.of(productId, quantity, calculatedPrice);
+        lines.add(line);
+        return line.getId();
     }
 
     public void removeLine(UUID lineId) {
@@ -142,8 +144,24 @@ public class PosTransaction {
         return status;
     }
 
+    public PaymentMethod getPaymentMethod() {
+        return paymentMethod;
+    }
+
     public Money getTotal() {
         return calculateTotal();
+    }
+
+    public List<TransactionLine> getLines() {
+        return List.copyOf(lines);
+    }
+
+    public Instant getStartedAt() {
+        return startedAt;
+    }
+
+    public Instant getCompletedAt() {
+        return completedAt;
     }
 
     public List<DomainEvent> domainEvents() {

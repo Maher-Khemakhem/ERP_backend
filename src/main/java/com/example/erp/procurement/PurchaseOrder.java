@@ -105,6 +105,10 @@ public class PurchaseOrder {
         return id;
     }
 
+    public List<PurchaseOrderLine> getLines() {
+        return List.copyOf(lines);
+    }
+
     public UUID getSupplierId() {
         return supplierId;
     }
@@ -131,6 +135,10 @@ public class PurchaseOrder {
     @Override
     public int hashCode() {
         return id.hashCode();
+    }
+
+    public Instant getPlacedAt() {
+        return placedAt;
     }
 
     public enum PurchaseOrderStatus {

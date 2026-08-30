@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -66,12 +67,13 @@ class PosService {
     }
 
     @Transactional
-    public void addLine(UUID transactionId, UUID productId, Quantity quantity, Money calculatedPrice) {
+    public UUID addLine(UUID transactionId, UUID productId, Quantity quantity, Money calculatedPrice) {
         PosTransaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new IllegalArgumentException("Ticket introuvable : " + transactionId));
 
-        transaction.addLine(productId, quantity, calculatedPrice);
+        UUID lineId = transaction.addLine(productId, quantity, calculatedPrice);
         transactionRepository.save(transaction);
+        return lineId;
     }
 
     @Transactional
@@ -109,7 +111,59 @@ class PosService {
         tillRepository.save(till);
         publishAndClear(session);
     }
+    @Transactional
+    public void removeLine(UUID transactionId, UUID lineId) {
+        PosTransaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new IllegalArgumentException("Ticket introuvable : " + transactionId));
+        transaction.removeLine(lineId);
+        transactionRepository.save(transaction);
+    }
 
+    @Transactional
+    public void voidTransaction(UUID transactionId, String reason) {
+        PosTransaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new IllegalArgumentException("Ticket introuvable : " + transactionId));
+        transaction.voidTransaction(reason);
+        transactionRepository.save(transaction);
+        publishAndClear(transaction);
+    }
+
+    @Transactional
+    public void deleteTransaction(UUID transactionId) {
+        PosTransaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new IllegalArgumentException("Ticket introuvable : " + transactionId));
+
+        if (transaction.getStatus() != PosTransaction.TransactionStatus.IN_PROGRESS) {
+            throw new IllegalStateException("Seuls les tickets en cours peuvent être supprimés");
+        }
+
+        transactionRepository.delete(transaction);
+    }
+
+    @Transactional(readOnly = true)
+    public CashSession getSession(UUID cashSessionId) {
+        return cashSessionRepository.findById(cashSessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Session introuvable : " + cashSessionId));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<CashSession> findOpenSession(UUID tillId) {
+        return cashSessionRepository
+                .findByTillIdAndStatusOrderByOpenedAtDesc(tillId, CashSession.SessionStatus.OPEN)
+                .stream()
+                .findFirst();
+    }
+
+    @Transactional(readOnly = true)
+    public PosTransaction getTransaction(UUID transactionId) {
+        return transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new IllegalArgumentException("Ticket introuvable : " + transactionId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PosTransaction> listTransactions() {
+        return transactionRepository.findAllByOrderByStartedAtDesc();
+    }
     private void requireOpenSession(UUID cashSessionId) {
         CashSession session = cashSessionRepository.findById(cashSessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Session introuvable : " + cashSessionId));

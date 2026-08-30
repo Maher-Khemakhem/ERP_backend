@@ -111,6 +111,10 @@ public class StockLevel {
         return productId;
     }
 
+    public List<LotEntry> getLots() {
+        return List.copyOf(lots);
+    }
+
     private LocalDate today() {
         return LocalDate.now();
     }

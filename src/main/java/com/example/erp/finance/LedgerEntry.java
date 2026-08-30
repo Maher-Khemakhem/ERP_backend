@@ -84,8 +84,16 @@ public class LedgerEntry {
         return amount;
     }
 
+    public String getDescription() {
+        return description;
+    }
+
     public UUID getReferenceId() {
         return referenceId;
+    }
+
+    public Instant getRecordedAt() {
+        return recordedAt;
     }
 
     @Override
