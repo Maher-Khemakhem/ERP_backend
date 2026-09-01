@@ -77,15 +77,28 @@ public class PurchaseOrder {
         domainEvents.add(PurchaseOrderPlaced.of(id, supplierId, lineSnapshots()));
     }
 
+    /** Cancels an order that has not been received yet. */
+    public void cancel() {
+        if (status != PurchaseOrderStatus.DRAFT && status != PurchaseOrderStatus.PLACED) {
+            throw new IllegalStateException(
+                    "Commande " + id + " : seule une commande DRAFT ou PLACED peut être annulée");
+        }
+        this.status = PurchaseOrderStatus.CANCELLED;
+        domainEvents.clear();
+    }
+
     /**
      * Marque la commande comme reçue. Ne crée PAS elle-même les Lot
      * dans Inventory — publie GoodsReceived, qu'Inventory écoutera
      * pour créer ses propres lots avec dates de péremption.
      */
-    public void markReceived() {
+    public void markReceived(List<GoodsReceived.ReceiptLine> receiptLines) {
         requireStatus(PurchaseOrderStatus.PLACED);
+        if (receiptLines == null || receiptLines.isEmpty()) {
+            throw new IllegalArgumentException("A receipt must contain at least one line");
+        }
         this.status = PurchaseOrderStatus.RECEIVED;
-        domainEvents.add(GoodsReceived.of(id, supplierId, lineSnapshots()));
+        domainEvents.add(GoodsReceived.of(id, supplierId, receiptLines));
     }
 
     private List<PurchaseOrderPlaced.LineItem> lineSnapshots() {
@@ -142,6 +155,6 @@ public class PurchaseOrder {
     }
 
     public enum PurchaseOrderStatus {
-        DRAFT, PLACED, RECEIVED
+        DRAFT, PLACED, RECEIVED, CANCELLED
     }
 }

@@ -19,7 +19,7 @@ import java.util.UUID;
  * dans une seule transaction.
  */
 @Service
-class InventoryService {
+public class InventoryService {
 
     private final StockLevelRepository stockRepository;
     private final ProductRepository productRepository;
@@ -35,6 +35,8 @@ class InventoryService {
 
     @Transactional
     public void sell(UUID productId, Quantity quantity) {
+        validateProductForSale(productId, quantity.unitType());
+
         StockLevel stock = stockRepository.findByProductId(productId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Aucun stock trouvé pour le produit : " + productId));
@@ -46,8 +48,39 @@ class InventoryService {
         publishAndClear(stock);
     }
 
+    /** Validates the catalog contract used by POS before pricing or selling. */
+    @Transactional(readOnly = true)
+    public void validateProductForSale(UUID productId, Quantity.UnitType unitType) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Product not found: " + productId));
+
+        if (product.getUnitType() != unitType) {
+            throw new IllegalArgumentException(
+                    "Requested unit type does not match the product: " + productId);
+        }
+    }
+
+    @Transactional
+    public boolean trySell(UUID productId, Quantity quantity) {
+        try {
+            sell(productId, quantity);
+            return true;
+        } catch (StockLevel.InsufficientStockException ex) {
+            return false;
+        }
+    }
+
     @Transactional
     public void receive(UUID productId, Lot lot, Quantity quantity) {
+        validateProductForSale(productId, quantity.unitType());
+        if (!productId.equals(lot.getProductId())) {
+            throw new IllegalArgumentException("Lot product does not match the stock product");
+        }
+        if (lot.getExpiryDate() == null && productRepository.findById(productId).orElseThrow().isPerishable()) {
+            throw new IllegalArgumentException("Perishable products require an expiry date");
+        }
+
         StockLevel stock = stockRepository.findByProductId(productId)
                 .orElseGet(() -> StockLevel.initialize(productId));
 
@@ -55,6 +88,20 @@ class InventoryService {
 
         stockRepository.save(stock);
         publishAndClear(stock);
+    }
+
+    /** Receives stock from another module without exposing Inventory's Lot entity. */
+    @Transactional
+    public void receiveStock(UUID productId, Quantity quantity, String lotNumber,
+                             LocalDate expiryDate, LocalDate receivedDate,
+                             String supplierReference) {
+        String effectiveLotNumber = lotNumber == null || lotNumber.isBlank()
+                ? "LOT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase()
+                : lotNumber.trim();
+        LocalDate effectiveReceivedDate = receivedDate == null ? LocalDate.now() : receivedDate;
+        Lot lot = Lot.receive(effectiveLotNumber, productId, expiryDate,
+                effectiveReceivedDate, supplierReference);
+        receive(productId, lot, quantity);
     }
 
     @Transactional

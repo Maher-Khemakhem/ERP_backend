@@ -43,15 +43,9 @@ class ReceiveStockController {
 
         LocalDate receivedDate = request.receivedDate() != null ? request.receivedDate() : LocalDate.now();
 
-        Lot lot = Lot.receive(
-                request.lotNumber(),
-                request.productId(),
-                request.expiryDate(),
-                receivedDate,
-                request.supplierReference()
-        );
-
-        inventoryService.receive(request.productId(), lot, quantity);
+        inventoryService.receiveStock(
+                request.productId(), quantity, request.lotNumber(), request.expiryDate(),
+                receivedDate, request.supplierReference());
 
         return ResponseEntity.ok(Map.of("status", "received"));
     }

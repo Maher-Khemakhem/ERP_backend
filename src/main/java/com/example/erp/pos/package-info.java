@@ -1,13 +1,12 @@
 /**
  * POS module.
  *
- * Owns: Till, CashSession, PosTransaction (aggregate root), TransactionLine.
- * Publishes: TransactionCompleted, CashSessionOpened, CashSessionClosed.
- * Calls synchronously (not via events - latency-critical at checkout):
- *   pricing module's PricingEngine.
+ * Owns: Till, CashSession, PosTransaction, TransactionLine.
+ * Calls InventoryService to deduct stock when a sale is completed and calls
+ * the pricing engine synchronously before adding a line.
  */
 @org.springframework.modulith.ApplicationModule(
         displayName = "Point of Sale",
-        allowedDependencies = {"pricing", "shared"}
+        allowedDependencies = {"inventory", "pricing", "shared"}
 )
 package com.example.erp.pos;

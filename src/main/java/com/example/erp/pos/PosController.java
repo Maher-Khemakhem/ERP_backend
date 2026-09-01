@@ -4,23 +4,47 @@ import com.example.erp.pos.dto.*;
 import com.example.erp.pricing.PricingEngine;
 import com.example.erp.shared.Money;
 import com.example.erp.shared.Quantity;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/pos")
-class CheckoutController {
+public class PosController {
 
     private final PosService posService;
     private final PricingEngine pricingEngine;
 
-    CheckoutController(PosService posService, PricingEngine pricingEngine) {
+    PosController(PosService posService, PricingEngine pricingEngine) {
         this.posService = posService;
         this.pricingEngine = pricingEngine;
+    }
+
+    public record TillView(UUID id, String tillNumber, String status, String cashierName,
+                          String cashInDrawer, String openedAt, String closedAt) {
+        static TillView from(Till till, CashSession session) {
+            Money cashInDrawer = session == null ? Money.zero() :
+                    session.getStatus() == CashSession.SessionStatus.OPEN
+                            ? session.getExpectedCash()
+                            : session.getCountedCash() == null ? Money.zero() : session.getCountedCash();
+
+            return new TillView(
+                    till.getId(),
+                    till.getTillNumber(),
+                    till.getStatus().name(),
+                    session == null ? null : session.getCashierName(),
+                    cashInDrawer.toString(),
+                    session == null || session.getOpenedAt() == null ? null : session.getOpenedAt().toString(),
+                    session == null || session.getClosedAt() == null ? null : session.getClosedAt().toString()
+            );
+        }
+    }
+
+    public record CreateTillRequest(String tillNumber) {
     }
 
     public record SessionView(UUID id, UUID tillId, String status, String expectedCash) {
@@ -46,9 +70,32 @@ class CheckoutController {
         }
     }
 
+    @GetMapping("/tills")
+    public ResponseEntity<List<TillView>> listTills() {
+        return ResponseEntity.ok(
+                posService.listTills().stream()
+                        .map(till -> TillView.from(till, posService.findLatestSession(till.getId()).orElse(null)))
+                        .toList()
+        );
+    }
+
+    @GetMapping("/tills/{tillId}")
+    public ResponseEntity<TillView> getTill(@PathVariable UUID tillId) {
+        return posService.getTill(tillId)
+                .map(till -> TillView.from(till, posService.findLatestSession(tillId).orElse(null)))
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/tills")
+    public ResponseEntity<Map<String, UUID>> createTill(@RequestBody CreateTillRequest request) {
+        UUID tillId = posService.createTill(request.tillNumber());
+        return ResponseEntity.ok(Map.of("id", tillId));
+    }
+
     @PostMapping("/sessions/open")
     public ResponseEntity<Map<String, UUID>> openSession(@RequestBody OpenSessionRequest request) {
-        UUID sessionId = posService.openSession(request.tillId(), Money.of(request.openingFloat().doubleValue()));
+        UUID sessionId = posService.openSession(request.tillId(), request.cashierName(), Money.of(request.openingFloat().doubleValue()));
         return ResponseEntity.ok(Map.of("cashSessionId", sessionId));
     }
 
@@ -89,8 +136,12 @@ class CheckoutController {
 
     @PostMapping("/transactions/{transactionId}/lines")
     public ResponseEntity<Map<String, String>> addLine(@PathVariable UUID transactionId,
-                                                       @RequestBody AddLineRequest request) {
+                                                       @Valid @RequestBody AddLineRequest request) {
         Quantity.UnitType unitType = Quantity.UnitType.valueOf(request.unitType());
+        if (unitType == Quantity.UnitType.EACH
+                && request.quantityValue().stripTrailingZeros().scale() > 0) {
+            throw new IllegalArgumentException("EACH quantity must be a whole number");
+        }
         Quantity quantity = unitType == Quantity.UnitType.EACH
                 ? Quantity.each(request.quantityValue().intValueExact())
                 : new Quantity(request.quantityValue(), unitType);
@@ -103,7 +154,7 @@ class CheckoutController {
 
     @PostMapping("/transactions/{transactionId}/complete")
     public ResponseEntity<Void> completeTransaction(@PathVariable UUID transactionId,
-                                                    @RequestBody CompleteTransactionRequest request) {
+                                                    @Valid @RequestBody CompleteTransactionRequest request) {
         PosTransaction.PaymentMethod method = PosTransaction.PaymentMethod.valueOf(request.paymentMethod());
         posService.completeTransaction(transactionId, method);
         return ResponseEntity.ok().build();

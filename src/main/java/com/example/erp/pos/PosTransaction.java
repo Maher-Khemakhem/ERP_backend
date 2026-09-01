@@ -1,6 +1,5 @@
 package com.example.erp.pos;
 
-import com.example.erp.shared.DomainEvent;
 import com.example.erp.shared.Money;
 import com.example.erp.shared.Quantity;
 import jakarta.persistence.*;
@@ -10,17 +9,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * PosTransaction — aggregate root d'un ticket de caisse.
- *
- * Accumule des lignes pendant le scan, puis se complète en un seul
- * geste (Complete()), qui fige le total, marque la transaction comme
- * terminée, et publie TransactionCompleted — l'événement central qui
- * déclenche la déduction de stock (Inventory), l'enregistrement du
- * chiffre d'affaires (Finance), et l'accumulation d'espèces sur la
- * session de caisse (recordCashPayment sur CashSession, si paiement
- * en espèces).
- */
 @Entity
 @Table(name = "pos_transaction", schema = "pos")
 public class PosTransaction {
@@ -49,11 +37,7 @@ public class PosTransaction {
     @Column(name = "completed_at")
     private Instant completedAt;
 
-    @Transient
-    private final List<DomainEvent> domainEvents = new ArrayList<>();
-
     protected PosTransaction() {
-        // requis par JPA/Hibernate
     }
 
     private PosTransaction(UUID id, UUID cashSessionId) {
@@ -67,12 +51,6 @@ public class PosTransaction {
         return new PosTransaction(UUID.randomUUID(), cashSessionId);
     }
 
-    /**
-     * Ajoute une ligne au ticket en cours. Le prix est déjà calculé
-     * (appelé synchrone à PricingEngine par le service applicatif,
-     * AVANT d'appeler cette méthode) — PosTransaction ne fait que
-     * l'accumuler.
-     */
     public UUID addLine(UUID productId, Quantity quantity, Money calculatedPrice) {
         requireInProgress();
         TransactionLine line = TransactionLine.of(productId, quantity, calculatedPrice);
@@ -88,11 +66,6 @@ public class PosTransaction {
         }
     }
 
-    /**
-     * Finalise la transaction : fige le statut, calcule le total,
-     * publie TransactionCompleted. C'est l'unique point de bascule
-     * "encore modifiable" → "définitif".
-     */
     public void complete(PaymentMethod paymentMethod) {
         requireInProgress();
         if (lines.isEmpty()) {
@@ -101,15 +74,11 @@ public class PosTransaction {
         this.paymentMethod = Objects.requireNonNull(paymentMethod);
         this.status = TransactionStatus.COMPLETED;
         this.completedAt = Instant.now();
-
-        Money total = calculateTotal();
-        domainEvents.add(TransactionCompleted.of(id, cashSessionId, paymentMethod, total, lineSnapshots()));
     }
 
     public void voidTransaction(String reason) {
         requireInProgress();
         this.status = TransactionStatus.VOIDED;
-        domainEvents.add(TransactionVoided.of(id, reason));
     }
 
     private Money calculateTotal() {
@@ -118,12 +87,6 @@ public class PosTransaction {
             total = total.add(line.getLineTotal());
         }
         return total;
-    }
-
-    private List<TransactionCompleted.LineItem> lineSnapshots() {
-        return lines.stream()
-                .map(l -> new TransactionCompleted.LineItem(l.getProductId(), l.getQuantity(), l.getLineTotal()))
-                .toList();
     }
 
     private void requireInProgress() {
@@ -162,14 +125,6 @@ public class PosTransaction {
 
     public Instant getCompletedAt() {
         return completedAt;
-    }
-
-    public List<DomainEvent> domainEvents() {
-        return List.copyOf(domainEvents);
-    }
-
-    public void clearDomainEvents() {
-        domainEvents.clear();
     }
 
     @Override

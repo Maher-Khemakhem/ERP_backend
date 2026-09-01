@@ -1,10 +1,9 @@
 /**
  * Finance module.
  *
- * Owns: LedgerEntry, TillReconciliation.
- * Listens to: TransactionCompleted (revenue), GoodsReceived (AP),
- *             CashSessionClosed (till reconciliation).
- * Publishes nothing (yet) - Finance is mostly a consumer/system of record.
+ * Owns: LedgerEntry, accounting history.
+ * This project keeps POS simplified and direct; Finance is no longer
+ * driven by POS event listeners.
  */
 @org.springframework.modulith.ApplicationModule(
         displayName = "Finance"

@@ -1,5 +1,7 @@
 package com.example.erp;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -21,6 +23,8 @@ import java.util.Map;
  */
 @RestControllerAdvice
 class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
      * Requête invalide côté métier — mauvais UUID, produit introuvable,
@@ -66,8 +70,7 @@ class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
-        // TODO : brancher un vrai logger (SLF4J) ici une fois la
-        // stratégie de logging de l'app définie.
+        log.error("Unexpected server error", ex);
         return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Une erreur inattendue est survenue");
     }
 

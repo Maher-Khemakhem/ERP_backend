@@ -1,28 +1,38 @@
 package com.example.erp.procurement;
 
 import com.example.erp.shared.DomainEvent;
+import com.example.erp.shared.Money;
+import com.example.erp.shared.Quantity;
+
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Publié à la réception physique de la marchandise. Écouté par
- * Inventory pour créer les Lot correspondants et augmenter le stock —
- * Procurement ne connaît pas les dates de péremption des lots reçus,
- * c'est une information saisie séparément au moment de la réception
- * (typiquement par l'employé qui réceptionne, pas déductible de la
- * commande elle-même).
- */
+/** Published after a physical receipt has been recorded. */
 public record GoodsReceived(
         UUID eventId,
         Instant occurredAt,
         UUID purchaseOrderId,
         UUID supplierId,
-        List<PurchaseOrderPlaced.LineItem> lines
+        List<ReceiptLine> lines
 ) implements DomainEvent {
 
     public static GoodsReceived of(UUID purchaseOrderId, UUID supplierId,
-                                   List<PurchaseOrderPlaced.LineItem> lines) {
+                                   List<ReceiptLine> lines) {
         return new GoodsReceived(UUID.randomUUID(), Instant.now(), purchaseOrderId, supplierId, lines);
+    }
+
+    /** Actual received quantity plus the lot information entered at receiving. */
+    public record ReceiptLine(
+            UUID purchaseOrderLineId,
+            UUID productId,
+            Quantity quantity,
+            Money unitCost,
+            String lotNumber,
+            LocalDate expiryDate,
+            LocalDate receivedDate,
+            String supplierReference
+    ) {
     }
 }

@@ -1,11 +1,8 @@
 /**
  * Inventory module.
  *
- * Owns: Product, Lot, StockLevel (aggregate root), StockMovement.
- * Publishes: StockSold, StockReceived, StockWrittenOff, LowStockThresholdReached.
- * Listens to: TransactionCompleted (from pos), GoodsReceived (from procurement).
- *
- * Nothing outside this package may import from inventory.internal.
+ * Owns: Product, Lot, StockLevel, stock movements.
+ * Exposes InventoryService as the application boundary for stock movements.
  */
 @org.springframework.modulith.ApplicationModule(
         displayName = "Inventory"

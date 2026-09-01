@@ -1,7 +1,6 @@
 package com.example.erp.finance;
 
 import com.example.erp.procurement.GoodsReceived;
-import com.example.erp.procurement.PurchaseOrderPlaced;
 import com.example.erp.shared.Money;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
@@ -19,7 +18,7 @@ class GoodsReceivedListener {
     @ApplicationModuleListener
     void on(GoodsReceived event) {
         Money totalCost = event.lines().stream()
-                .map(line -> line.unitCost().multiply(line.quantity().value().intValue()))
+                .map(line -> line.unitCost().multiply(line.quantity().value()))
                 .reduce(Money.zero(), Money::add);
 
         LedgerEntry entry = LedgerEntry.accountsPayable(

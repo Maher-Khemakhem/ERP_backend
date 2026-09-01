@@ -4,13 +4,6 @@ import jakarta.persistence.*;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Till — une caisse physique (poste d'encaissement).
- *
- * Entité simple : représente le poste matériel lui-même. La logique
- * de session de caisse (ouverture, clôture, comptage) vit dans
- * CashSession, pas ici — Till reste une référence stable au poste.
- */
 @Entity
 @Table(name = "till", schema = "pos")
 public class Till {
@@ -19,14 +12,13 @@ public class Till {
     private UUID id;
 
     @Column(name = "till_number", nullable = false, unique = true)
-    private String tillNumber; // ex. "Caisse 1", "Caisse 2"
+    private String tillNumber;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TillStatus status;
 
     protected Till() {
-        // requis par JPA/Hibernate
     }
 
     private Till(UUID id, String tillNumber, TillStatus status) {
