@@ -1,0 +1,13 @@
+package com.example.erp.finance;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+interface JournalEntryRepository extends JpaRepository<JournalEntry, UUID> {
+    Optional<JournalEntry> findByEventKey(String eventKey);
+    List<JournalEntry> findAllByOrderByPostedAtDesc();
+    List<JournalEntry> findByPostedAtBetweenOrderByPostedAtAsc(Instant from, Instant to);
+}

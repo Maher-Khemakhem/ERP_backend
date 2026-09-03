@@ -2,6 +2,7 @@ package com.example.erp.inventory;
 
 import com.example.erp.shared.Quantity;
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -27,26 +28,36 @@ public class Product {
     @Column(name = "reorder_point")
     private int reorderPoint;
 
+    @Column(name = "vat_rate", precision = 5, scale = 2)
+    private BigDecimal vatRate;
+
     protected Product() {
         // requis par JPA/Hibernate
     }
 
     private Product(UUID id, String sku, String name,
-                    Quantity.UnitType unitType, boolean perishable, int reorderPoint) {
+                    Quantity.UnitType unitType, boolean perishable, int reorderPoint,
+                    BigDecimal vatRate) {
         this.id = Objects.requireNonNull(id);
         this.sku = requireNonBlank(sku, "sku");
         this.name = requireNonBlank(name, "name");
         this.unitType = Objects.requireNonNull(unitType);
         this.perishable = perishable;
         this.reorderPoint = reorderPoint;
+        this.vatRate = requireVatRate(vatRate);
     }
 
     public static Product create(String sku, String name, Quantity.UnitType unitType,
                                  boolean perishable, int reorderPoint) {
+        return create(sku, name, unitType, perishable, reorderPoint, BigDecimal.valueOf(19));
+    }
+
+    public static Product create(String sku, String name, Quantity.UnitType unitType,
+                                 boolean perishable, int reorderPoint, BigDecimal vatRate) {
         if (reorderPoint < 0) {
             throw new IllegalArgumentException("Le seuil de réapprovisionnement ne peut pas être négatif");
         }
-        return new Product(UUID.randomUUID(), sku, name, unitType, perishable, reorderPoint);
+        return new Product(UUID.randomUUID(), sku, name, unitType, perishable, reorderPoint, vatRate);
     }
 
     private static String requireNonBlank(String value, String fieldName) {
@@ -54,6 +65,14 @@ public class Product {
             throw new IllegalArgumentException(fieldName + " ne peut pas être vide");
         }
         return value;
+    }
+
+    private static BigDecimal requireVatRate(BigDecimal value) {
+        Objects.requireNonNull(value, "vatRate must not be null");
+        if (value.signum() < 0 || value.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new IllegalArgumentException("VAT rate must be between 0 and 100");
+        }
+        return value.setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     public UUID getId() {
@@ -78,6 +97,10 @@ public class Product {
 
     public int getReorderPoint() {
         return reorderPoint;
+    }
+
+    public BigDecimal getVatRate() {
+        return vatRate == null ? BigDecimal.valueOf(19) : vatRate;
     }
 
     @Override

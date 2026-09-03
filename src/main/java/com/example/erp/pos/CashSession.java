@@ -12,6 +12,8 @@ public class CashSession {
 
     @Id
     private UUID id;
+    @Version
+    private long version;
 
     @Column(name = "till_id", nullable = false)
     private UUID tillId;
@@ -68,6 +70,9 @@ public class CashSession {
 
     public void close(Money actualCountedCash) {
         requireOpen();
+        if (actualCountedCash == null || actualCountedCash.isNegative()) {
+            throw new IllegalArgumentException("Counted cash cannot be negative");
+        }
         this.countedCash = actualCountedCash;
         this.status = SessionStatus.CLOSED;
         this.closedAt = Instant.now();

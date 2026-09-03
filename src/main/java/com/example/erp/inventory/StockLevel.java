@@ -1,6 +1,7 @@
 package com.example.erp.inventory;
 
 import com.example.erp.shared.DomainEvent;
+import com.example.erp.shared.Money;
 import com.example.erp.shared.Quantity;
 import jakarta.persistence.*;
 import java.time.LocalDate;
@@ -26,6 +27,9 @@ public class StockLevel {
 
     @Id
     private UUID id;
+
+    @Version
+    private long version;
 
     @Column(name = "product_id", nullable = false, unique = true)
     private UUID productId;
@@ -63,12 +67,13 @@ public class StockLevel {
      * @throws InsufficientStockException si la quantité disponible totale
      *         est inférieure à la quantité demandée
      */
-    public void sell(Quantity quantityToSell, LocalDate today, int reorderPoint) {
+    public Money sell(Quantity quantityToSell, LocalDate today, int reorderPoint) {
         Quantity available = totalAvailable(quantityToSell.unitType());
         if (available.isGreaterThanOrEqualTo(quantityToSell)) {
-            deductFefo(quantityToSell, today);
+            Money cost = deductFefo(quantityToSell, today);
             domainEvents.add(StockSold.of(productId, quantityToSell));
             checkReorderPoint(reorderPoint);
+            return cost;
         } else {
             throw new InsufficientStockException(productId, quantityToSell, available);
         }
@@ -119,12 +124,16 @@ public class StockLevel {
         return LocalDate.now();
     }
 
-    private void deductFefo(Quantity quantityToSell, LocalDate today) {
+    private Money deductFefo(Quantity quantityToSell, LocalDate today) {
         Quantity remaining = quantityToSell;
+        Money cost = Money.zero();
         for (LotEntry entry : sortedByExpiry(today)) {
             if (remaining.isZero()) break;
+            Quantity before = remaining;
             remaining = entry.deductUpTo(remaining);
+            cost = cost.add(entry.costFor(before.subtract(remaining)));
         }
+        return cost;
     }
 
     private List<LotEntry> sortedByExpiry(LocalDate today) {

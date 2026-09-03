@@ -1,6 +1,7 @@
 package com.example.erp.inventory;
 
 import com.example.erp.shared.DomainEvent;
+import com.example.erp.shared.Money;
 import com.example.erp.shared.Quantity;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -34,7 +35,7 @@ public class InventoryService {
     }
 
     @Transactional
-    public void sell(UUID productId, Quantity quantity) {
+    public Money sell(UUID productId, Quantity quantity) {
         validateProductForSale(productId, quantity.unitType());
 
         StockLevel stock = stockRepository.findByProductId(productId)
@@ -42,10 +43,11 @@ public class InventoryService {
                         "Aucun stock trouvé pour le produit : " + productId));
         int reorderPoint = reorderPointFor(productId);
 
-        stock.sell(quantity, LocalDate.now(), reorderPoint);
+        Money cost = stock.sell(quantity, LocalDate.now(), reorderPoint);
 
         stockRepository.save(stock);
         publishAndClear(stock);
+        return cost;
     }
 
     /** Validates the catalog contract used by POS before pricing or selling. */
@@ -59,6 +61,13 @@ public class InventoryService {
             throw new IllegalArgumentException(
                     "Requested unit type does not match the product: " + productId);
         }
+    }
+
+    @Transactional(readOnly = true)
+    public java.math.BigDecimal vatRateFor(UUID productId) {
+        return productRepository.findById(productId)
+                .orElseThrow(() -> new IllegalArgumentException("Product not found: " + productId))
+                .getVatRate();
     }
 
     @Transactional
@@ -95,12 +104,19 @@ public class InventoryService {
     public void receiveStock(UUID productId, Quantity quantity, String lotNumber,
                              LocalDate expiryDate, LocalDate receivedDate,
                              String supplierReference) {
+        receiveStock(productId, quantity, lotNumber, expiryDate, receivedDate, supplierReference, Money.zero());
+    }
+
+    @Transactional
+    public void receiveStock(UUID productId, Quantity quantity, String lotNumber,
+                             LocalDate expiryDate, LocalDate receivedDate,
+                             String supplierReference, Money unitCost) {
         String effectiveLotNumber = lotNumber == null || lotNumber.isBlank()
                 ? "LOT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase()
                 : lotNumber.trim();
         LocalDate effectiveReceivedDate = receivedDate == null ? LocalDate.now() : receivedDate;
         Lot lot = Lot.receive(effectiveLotNumber, productId, expiryDate,
-                effectiveReceivedDate, supplierReference);
+                effectiveReceivedDate, supplierReference, unitCost);
         receive(productId, lot, quantity);
     }
 

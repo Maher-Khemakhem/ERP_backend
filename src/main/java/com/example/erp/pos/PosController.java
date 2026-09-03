@@ -53,17 +53,21 @@ public class PosController {
         }
     }
 
-    public record LineView(UUID id, UUID productId, String quantity, String lineTotal) {
+    public record LineView(UUID id, UUID productId, String quantity, String lineTotal,
+                           String netTotal, String vatAmount) {
         static LineView from(TransactionLine line) {
-            return new LineView(line.getId(), line.getProductId(), line.getQuantity().toString(), line.getLineTotal().toString());
+            return new LineView(line.getId(), line.getProductId(), line.getQuantity().toString(),
+                    line.getNetTotal().toString(), line.getNetTotal().toString(), Money.zero().toString());
         }
     }
 
     public record TransactionView(UUID id, UUID cashSessionId, String status, String total,
+                                  String netTotal, String vatTotal,
                                   String paymentMethod, String startedAt, String completedAt,
                                   List<LineView> lines) {
         static TransactionView from(PosTransaction t) {
             return new TransactionView(t.getId(), t.getCashSessionId(), t.getStatus().name(), t.getTotal().toString(),
+                    t.getNetTotal().toString(), t.getVatTotal().toString(),
                     t.getPaymentMethod() == null ? null : t.getPaymentMethod().name(),
                     t.getStartedAt().toString(), t.getCompletedAt() == null ? null : t.getCompletedAt().toString(),
                     t.getLines().stream().map(LineView::from).toList());
@@ -94,7 +98,7 @@ public class PosController {
     }
 
     @PostMapping("/sessions/open")
-    public ResponseEntity<Map<String, UUID>> openSession(@RequestBody OpenSessionRequest request) {
+    public ResponseEntity<Map<String, UUID>> openSession(@Valid @RequestBody OpenSessionRequest request) {
         UUID sessionId = posService.openSession(request.tillId(), request.cashierName(), Money.of(request.openingFloat().doubleValue()));
         return ResponseEntity.ok(Map.of("cashSessionId", sessionId));
     }
@@ -113,13 +117,13 @@ public class PosController {
 
     @PostMapping("/sessions/{cashSessionId}/close")
     public ResponseEntity<Void> closeSession(@PathVariable UUID cashSessionId,
-                                             @RequestBody CloseSessionRequest request) {
+                                             @Valid @RequestBody CloseSessionRequest request) {
         posService.closeSession(cashSessionId, Money.of(request.countedCash().doubleValue()));
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/transactions/start")
-    public ResponseEntity<Map<String, UUID>> startTransaction(@RequestBody StartTransactionRequest request) {
+    public ResponseEntity<Map<String, UUID>> startTransaction(@Valid @RequestBody StartTransactionRequest request) {
         UUID transactionId = posService.startTransaction(request.cashSessionId());
         return ResponseEntity.ok(Map.of("transactionId", transactionId));
     }
@@ -149,14 +153,23 @@ public class PosController {
         Money price = pricingEngine.calculateLinePrice(request.productId(), quantity);
         UUID lineId = posService.addLine(transactionId, request.productId(), quantity, price);
 
-        return ResponseEntity.ok(Map.of("linePrice", price.toString(), "lineId", lineId.toString()));
+        TransactionLine line = posService.getTransaction(transactionId).getLines().stream()
+                .filter(candidate -> candidate.getId().equals(lineId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Created POS line could not be loaded"));
+        return ResponseEntity.ok(Map.of(
+                "linePrice", line.getLineTotal().toString(),
+                "netPrice", line.getNetTotal().toString(),
+                "vatAmount", line.getVatAmount().toString(),
+                "lineId", lineId.toString()));
     }
 
     @PostMapping("/transactions/{transactionId}/complete")
     public ResponseEntity<Void> completeTransaction(@PathVariable UUID transactionId,
                                                     @Valid @RequestBody CompleteTransactionRequest request) {
         PosTransaction.PaymentMethod method = PosTransaction.PaymentMethod.valueOf(request.paymentMethod());
-        posService.completeTransaction(transactionId, method);
+        posService.completeTransaction(transactionId, method,
+                request.amountReceived() == null ? null : Money.of(request.amountReceived()));
         return ResponseEntity.ok().build();
     }
 

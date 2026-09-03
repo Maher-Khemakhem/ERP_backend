@@ -10,6 +10,8 @@ public class Till {
 
     @Id
     private UUID id;
+    @Version
+    private long version;
 
     @Column(name = "till_number", nullable = false, unique = true)
     private String tillNumber;

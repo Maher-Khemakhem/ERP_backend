@@ -1,6 +1,7 @@
 package com.example.erp.inventory;
 
 
+import com.example.erp.shared.Money;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -40,18 +41,23 @@ public class Lot {
     @Column(name = "supplier_reference")
     private String supplierReference;
 
+    @Embedded
+    @AttributeOverride(name = "amount", column = @Column(name = "unit_cost", precision = 19, scale = 3))
+    private Money unitCost;
+
     protected Lot() {
         // requis par JPA/Hibernate
     }
 
     private Lot(UUID id, String lotNumber, UUID productId,
-                LocalDate expiryDate, LocalDate receivedDate, String supplierReference) {
+                LocalDate expiryDate, LocalDate receivedDate, String supplierReference, Money unitCost) {
         this.id = Objects.requireNonNull(id);
         this.lotNumber = requireNonBlank(lotNumber, "lotNumber");
         this.productId = Objects.requireNonNull(productId, "productId");
         this.expiryDate = expiryDate;
         this.receivedDate = Objects.requireNonNull(receivedDate, "receivedDate");
         this.supplierReference = supplierReference;
+        this.unitCost = Objects.requireNonNull(unitCost);
     }
 
     /**
@@ -61,8 +67,16 @@ public class Lot {
      */
     public static Lot receive(String lotNumber, UUID productId, LocalDate expiryDate,
                               LocalDate receivedDate, String supplierReference) {
+        return receive(lotNumber, productId, expiryDate, receivedDate, supplierReference, Money.zero());
+    }
+
+    public static Lot receive(String lotNumber, UUID productId, LocalDate expiryDate,
+                              LocalDate receivedDate, String supplierReference, Money unitCost) {
+        if (unitCost.isNegative()) {
+            throw new IllegalArgumentException("Lot unit cost cannot be negative");
+        }
         return new Lot(UUID.randomUUID(), lotNumber, productId,
-                expiryDate, receivedDate, supplierReference);
+                expiryDate, receivedDate, supplierReference, unitCost);
     }
 
     private static String requireNonBlank(String value, String fieldName) {
@@ -111,6 +125,10 @@ public class Lot {
 
     public LocalDate getReceivedDate() {
         return receivedDate;
+    }
+
+    public Money getUnitCost() {
+        return unitCost == null ? Money.zero() : unitCost;
     }
 
     @Override

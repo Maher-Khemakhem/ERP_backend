@@ -37,7 +37,9 @@ class PricingAdminController {
     }
 
     public record CreatePromotionRequest(
-            UUID productId, BigDecimal discountPercent, Instant validFrom, Instant validUntil) {
+            @NotNull UUID productId, @NotNull @jakarta.validation.constraints.DecimalMin("0.0")
+            @jakarta.validation.constraints.DecimalMax("100.0") BigDecimal discountPercent,
+            @NotNull Instant validFrom, @NotNull Instant validUntil) {
     }
 
     public record PromotionView(UUID id, UUID productId, boolean active) {
@@ -78,7 +80,7 @@ class PricingAdminController {
     }
 
     @PostMapping("/promotions")
-    public ResponseEntity<Map<String, UUID>> createPromotion(@RequestBody CreatePromotionRequest request) {
+    public ResponseEntity<Map<String, UUID>> createPromotion(@Valid @RequestBody CreatePromotionRequest request) {
         Promotion promotion = Promotion.percentageDiscount(
                 request.productId(), request.discountPercent(), request.validFrom(), request.validUntil());
         promotionRepository.save(promotion);

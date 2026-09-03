@@ -1,6 +1,7 @@
 package com.example.erp.inventory;
 
 
+import com.example.erp.shared.Money;
 import com.example.erp.shared.Quantity;
 import jakarta.persistence.*;
 import java.util.Objects;
@@ -61,6 +62,10 @@ class LotEntry {
         Quantity deductible = available().isGreaterThan(requested) ? requested : available();
         onHand = onHand.subtract(deductible);
         return requested.subtract(deductible);
+    }
+
+    Money costFor(Quantity quantity) {
+        return lot.getUnitCost().multiply(quantity.value());
     }
 
     /** Déduction exacte (écart de casse/péremption) — échoue si le lot n'a pas assez. */

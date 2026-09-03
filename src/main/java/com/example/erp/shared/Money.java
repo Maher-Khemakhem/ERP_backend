@@ -31,6 +31,10 @@ public record Money(BigDecimal amount) {
         return new Money(BigDecimal.valueOf(amount));
     }
 
+    public static Money of(BigDecimal amount) {
+        return new Money(amount);
+    }
+
     public static Money zero() {
         return new Money(BigDecimal.ZERO);
     }
@@ -60,6 +64,10 @@ public record Money(BigDecimal amount) {
 
     public boolean isNegative() {
         return amount.signum() < 0;
+    }
+
+    public boolean isZero() {
+        return amount.signum() == 0;
     }
 
     public boolean isGreaterThan(Money other) {

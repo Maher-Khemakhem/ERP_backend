@@ -54,7 +54,7 @@ class ProcurementServiceTest {
                 lineId, Quantity.each(4), "LOT-001", expiryDate, receivedDate, "DELIVERY-001")));
 
         verify(inventoryService).receiveStock(
-                productId, Quantity.each(4), "LOT-001", expiryDate, receivedDate, "DELIVERY-001");
+                productId, Quantity.each(4), "LOT-001", expiryDate, receivedDate, "DELIVERY-001", Money.of(2.5));
         verify(purchaseOrderRepository).save(order);
         assertThat(order.getStatus()).isEqualTo(PurchaseOrder.PurchaseOrderStatus.RECEIVED);
         assertThat(order.domainEvents()).hasSize(0);

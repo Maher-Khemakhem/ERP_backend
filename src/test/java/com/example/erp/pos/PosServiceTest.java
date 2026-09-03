@@ -8,6 +8,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -35,6 +36,9 @@ class PosServiceTest {
     @Mock
     private InventoryService inventoryService;
 
+    @Mock
+    private ApplicationEventPublisher events;
+
     @InjectMocks
     private PosService posService;
 
@@ -60,6 +64,8 @@ class PosServiceTest {
         when(transactionRepository.findById(transaction.getId())).thenReturn(Optional.of(transaction));
         when(cashSessionRepository.findById(cashSessionId))
                 .thenReturn(Optional.of(CashSession.open(cashSessionId, "Cashier", Money.zero())));
+        when(inventoryService.sell(productId, Quantity.each(2))).thenReturn(Money.zero());
+        when(inventoryService.sell(secondProductId, Quantity.kg(0.5))).thenReturn(Money.zero());
 
         posService.completeTransaction(transaction.getId(), PosTransaction.PaymentMethod.CARD);
 

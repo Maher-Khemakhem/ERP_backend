@@ -115,7 +115,7 @@ class ProcurementService {
 
             inventoryService.receiveStock(
                     orderLine.getProductId(), receipt.quantity(), receipt.lotNumber(),
-                    receipt.expiryDate(), receipt.receivedDate(), receipt.supplierReference());
+                    receipt.expiryDate(), receipt.receivedDate(), receipt.supplierReference(), orderLine.getUnitCost());
 
             return new GoodsReceived.ReceiptLine(
                     orderLine.getId(), orderLine.getProductId(), receipt.quantity(),

@@ -2,12 +2,15 @@ package com.example.erp.inventory;
 
 import com.example.erp.shared.Quantity;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import jakarta.validation.constraints.*;
 
-
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -15,57 +18,47 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/inventory/products")
 class ProductController {
-
     private final ProductRepository productRepository;
 
     ProductController(ProductRepository productRepository) {
         this.productRepository = productRepository;
     }
 
-
     public record CreateProductRequest(
-            @NotBlank(message = "le SKU est requis") String sku,
-            @NotBlank(message = "le nom est requis") String name,
-            @NotNull(message = "le type d'unité est requis") String unitType,
+            @NotBlank(message = "SKU is required") String sku,
+            @NotBlank(message = "name is required") String name,
+            @NotNull(message = "unitType is required") String unitType,
             boolean perishable,
-            @Min(value = 0, message = "le seuil de réapprovisionnement ne peut pas être négatif") int reorderPoint) {
+            @Min(value = 0, message = "reorder point cannot be negative") int reorderPoint,
+            @DecimalMin(value = "0.0", message = "VAT rate cannot be negative")
+            @DecimalMax(value = "100.0", message = "VAT rate cannot exceed 100") BigDecimal vatRate) {
     }
 
-    public record ProductView(
-            UUID id, String sku, String name, String unitType, boolean perishable, int reorderPoint) {
-
+    public record ProductView(UUID id, String sku, String name, String unitType,
+                              boolean perishable, int reorderPoint, BigDecimal vatRate) {
         static ProductView from(Product p) {
-            return new ProductView(p.getId(), p.getSku(), p.getName(),
-                    p.getUnitType().name(), p.isPerishable(), p.getReorderPoint());
+            return new ProductView(p.getId(), p.getSku(), p.getName(), p.getUnitType().name(),
+                    p.isPerishable(), p.getReorderPoint(), p.getVatRate());
         }
     }
 
     @PostMapping
     public ResponseEntity<Map<String, UUID>> create(@Valid @RequestBody CreateProductRequest request) {
-        Product product = Product.create(
-                request.sku(),
-                request.name(),
-                Quantity.UnitType.valueOf(request.unitType()),
-                request.perishable(),
-                request.reorderPoint()
-        );
+        Product product = Product.create(request.sku(), request.name(), Quantity.UnitType.valueOf(request.unitType()),
+                request.perishable(), request.reorderPoint(),
+                request.vatRate() == null ? BigDecimal.valueOf(19) : request.vatRate());
         productRepository.save(product);
         return ResponseEntity.ok(Map.of("productId", product.getId()));
     }
 
     @GetMapping
     public ResponseEntity<List<ProductView>> list() {
-        List<ProductView> products = productRepository.findAll().stream()
-                .map(ProductView::from)
-                .toList();
-        return ResponseEntity.ok(products);
+        return ResponseEntity.ok(productRepository.findAll().stream().map(ProductView::from).toList());
     }
 
     @GetMapping("/{productId}")
     public ResponseEntity<ProductView> get(@PathVariable UUID productId) {
-        return productRepository.findById(productId)
-                .map(ProductView::from)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        return productRepository.findById(productId).map(ProductView::from)
+                .map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 }

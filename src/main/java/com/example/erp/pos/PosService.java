@@ -4,6 +4,7 @@ import com.example.erp.inventory.InventoryService;
 import com.example.erp.shared.Money;
 import com.example.erp.shared.Quantity;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -17,15 +18,18 @@ public class PosService {
     private final CashSessionRepository cashSessionRepository;
     private final PosTransactionRepository transactionRepository;
     private final InventoryService inventoryService;
+    private final ApplicationEventPublisher events;
 
     PosService(TillRepository tillRepository,
                CashSessionRepository cashSessionRepository,
                PosTransactionRepository transactionRepository,
-               InventoryService inventoryService) {
+               InventoryService inventoryService,
+               ApplicationEventPublisher events) {
         this.tillRepository = tillRepository;
         this.cashSessionRepository = cashSessionRepository;
         this.transactionRepository = transactionRepository;
         this.inventoryService = inventoryService;
+        this.events = events;
     }
 
     @Transactional(readOnly = true)
@@ -75,13 +79,20 @@ public class PosService {
         requireOpenSession(transaction.getCashSessionId());
         inventoryService.validateProductForSale(productId, quantity.unitType());
 
-        UUID lineId = transaction.addLine(productId, quantity, calculatedPrice);
+        // Keep each product line at its net price. The transaction applies VAT
+        // once to the final ticket subtotal.
+        UUID lineId = transaction.addLine(productId, quantity, calculatedPrice, Money.zero());
         transactionRepository.save(transaction);
         return lineId;
     }
 
     @Transactional
     public void completeTransaction(UUID transactionId, PosTransaction.PaymentMethod paymentMethod) {
+        completeTransaction(transactionId, paymentMethod, null);
+    }
+
+    @Transactional
+    public void completeTransaction(UUID transactionId, PosTransaction.PaymentMethod paymentMethod, Money amountReceived) {
         PosTransaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new IllegalArgumentException("Ticket not found: " + transactionId));
 
@@ -90,15 +101,25 @@ public class PosService {
         }
 
         CashSession session = requireOpenSession(transaction.getCashSessionId());
+        Money transactionTotal = transaction.getTotal();
+        if (amountReceived != null && paymentMethod == PosTransaction.PaymentMethod.CASH
+                && amountReceived.amount().compareTo(transactionTotal.amount()) < 0) {
+            throw new IllegalArgumentException("Cash received is less than the transaction total");
+        }
+        if (amountReceived != null && paymentMethod == PosTransaction.PaymentMethod.CARD
+                && amountReceived.amount().compareTo(transactionTotal.amount()) != 0) {
+            throw new IllegalArgumentException("Card amount must equal the transaction total");
+        }
 
         // Stock deduction and transaction completion share this transaction.
         // If any line cannot be sold, the whole sale is rolled back.
+        Money totalCost = Money.zero();
         for (var line : transaction.getLines()) {
-            inventoryService.sell(line.getProductId(), line.getQuantity());
+            totalCost = totalCost.add(inventoryService.sell(line.getProductId(), line.getQuantity()));
         }
 
         transaction.complete(paymentMethod);
-        Money total = transaction.getTotal();
+        Money total = transactionTotal;
 
         if (paymentMethod == PosTransaction.PaymentMethod.CASH) {
             session.recordCashPayment(total);
@@ -106,6 +127,8 @@ public class PosService {
         }
 
         transactionRepository.save(transaction);
+        events.publishEvent(TransactionCompleted.of(transaction.getId(), transaction.getCashSessionId(),
+                paymentMethod.name(), transaction.getNetTotal(), transaction.getVatTotal(), total, totalCost));
     }
 
     @Transactional
@@ -113,6 +136,7 @@ public class PosService {
         CashSession session = cashSessionRepository.findById(cashSessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Cash session not found: " + cashSessionId));
 
+        Money expectedCash = session.getExpectedCash();
         session.close(actualCountedCash);
 
         Till till = tillRepository.findById(session.getTillId())
@@ -121,6 +145,7 @@ public class PosService {
 
         cashSessionRepository.save(session);
         tillRepository.save(till);
+        events.publishEvent(CashSessionClosed.of(cashSessionId, expectedCash, actualCountedCash));
     }
 
     @Transactional
