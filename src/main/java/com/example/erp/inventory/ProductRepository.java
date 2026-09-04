@@ -1,6 +1,7 @@
 package com.example.erp.inventory;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -12,4 +13,5 @@ import java.util.UUID;
  * événements ou par des méthodes publiques de InventoryService.
  */
 interface ProductRepository extends JpaRepository<Product, UUID> {
+    Optional<Product> findBySku(String sku);
 }

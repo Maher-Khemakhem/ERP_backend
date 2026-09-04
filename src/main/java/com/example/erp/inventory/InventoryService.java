@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -61,6 +62,15 @@ public class InventoryService {
             throw new IllegalArgumentException(
                     "Requested unit type does not match the product: " + productId);
         }
+    }
+
+    /** Resolves a product by the barcode/SKU printed on its packaging. */
+    @Transactional(readOnly = true)
+    public Optional<Product> findProductBySku(String sku) {
+        if (sku == null || sku.isBlank()) {
+            return Optional.empty();
+        }
+        return productRepository.findBySku(sku.trim());
     }
 
     @Transactional(readOnly = true)

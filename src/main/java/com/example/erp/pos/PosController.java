@@ -5,6 +5,7 @@ import com.example.erp.pricing.PricingEngine;
 import com.example.erp.shared.Money;
 import com.example.erp.shared.Quantity;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,10 +19,13 @@ public class PosController {
 
     private final PosService posService;
     private final PricingEngine pricingEngine;
+    private final ScannerSessionService scannerSessionService;
 
-    PosController(PosService posService, PricingEngine pricingEngine) {
+    PosController(PosService posService, PricingEngine pricingEngine,
+                  ScannerSessionService scannerSessionService) {
         this.posService = posService;
         this.pricingEngine = pricingEngine;
+        this.scannerSessionService = scannerSessionService;
     }
 
     public record TillView(UUID id, String tillNumber, String status, String cashierName,
@@ -45,6 +49,15 @@ public class PosController {
     }
 
     public record CreateTillRequest(String tillNumber) {
+    }
+
+    public record ScannerPairingView(UUID sessionId, String token, String expiresAt) {
+        static ScannerPairingView from(ScannerSessionService.Pairing pairing) {
+            return new ScannerPairingView(pairing.sessionId(), pairing.token(), pairing.expiresAt().toString());
+        }
+    }
+
+    public record ScannerScanRequest(@NotBlank(message = "barcode is required") String barcode) {
     }
 
     public record SessionView(UUID id, UUID tillId, String status, String expectedCash) {
@@ -126,6 +139,27 @@ public class PosController {
     public ResponseEntity<Map<String, UUID>> startTransaction(@Valid @RequestBody StartTransactionRequest request) {
         UUID transactionId = posService.startTransaction(request.cashSessionId());
         return ResponseEntity.ok(Map.of("transactionId", transactionId));
+    }
+
+    @PostMapping("/transactions/{transactionId}/scanner-session")
+    public ResponseEntity<ScannerPairingView> createScannerSession(@PathVariable UUID transactionId) {
+        return ResponseEntity.ok(ScannerPairingView.from(scannerSessionService.create(transactionId)));
+    }
+
+    @PostMapping("/scanner-sessions/{sessionId}/scans")
+    public ResponseEntity<ScannerSessionService.ScanResult> scanFromPhone(
+            @PathVariable UUID sessionId,
+            @RequestHeader(value = "X-Scanner-Token", required = false) String token,
+            @Valid @RequestBody ScannerScanRequest request) {
+        return ResponseEntity.ok(scannerSessionService.scan(sessionId, token, request.barcode()));
+    }
+
+    @DeleteMapping("/scanner-sessions/{sessionId}")
+    public ResponseEntity<Void> closeScannerSession(
+            @PathVariable UUID sessionId,
+            @RequestHeader(value = "X-Scanner-Token", required = false) String token) {
+        scannerSessionService.close(sessionId, token);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/transactions/{transactionId}")
