@@ -20,6 +20,7 @@ Business modules under `src/main/java/com/example/erp/`:
 | `pos` | Tills, cash sessions, transactions, payments, and phone scanning |
 | `procurement` | Suppliers, purchase orders, receiving, and low-stock alerts |
 | `finance` | Journals, ledger entries, P&L, supplier invoices, payments, and settlements |
+| `auth` | Users, password hashing, JWT tokens, and role management |
 | `shared` | Money, quantities, and domain-event abstractions |
 
 ## Run locally
@@ -63,7 +64,8 @@ $env:DB_PASSWORD = "your-password"
 - Dates use ISO-8601 `yyyy-MM-dd`; timestamps use ISO-8601 timestamps.
 - `unitType` is `EACH` or `WEIGHT`. `EACH` quantities must be whole numbers; `WEIGHT` quantities are kilograms with three-decimal precision.
 - Monetary input is numeric JSON (for example `12.500`); monetary response fields are usually strings such as `12.500 TND`.
-- There is currently no authentication or authorization layer.
+- Authentication uses a stateless JWT bearer token. Send it as `Authorization: Bearer <token>` on protected requests.
+- Roles are `ADMIN`, `MANAGER`, `CASHIER`, `INVENTORY_MANAGER`, and `ACCOUNTANT`. Role changes apply when the user signs in again.
 - Validation and business errors use this shape:
 
   ```json
@@ -76,6 +78,55 @@ $env:DB_PASSWORD = "your-password"
   ```
 
   Typical statuses are `400` for invalid input, `404` for missing resources, `409` for invalid state transitions, and `500` for unexpected errors.
+
+## Authentication and roles
+
+The first account is created through the one-time setup endpoint. Once a user exists, public registration is closed and only an administrator can create or manage users.
+
+| Method | Endpoint | Access | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/auth/setup-status` | Public | Check whether the first admin must be created |
+| `POST` | `/api/auth/register` | Public, first user only | Create the first `ADMIN` account and receive a token |
+| `POST` | `/api/auth/login` | Public | Authenticate and receive a JWT token |
+| `GET` | `/api/auth/me` | Authenticated | Get the current user |
+| `GET` | `/api/auth/users` | `ADMIN` | List users |
+| `POST` | `/api/auth/users` | `ADMIN` | Create a user with roles |
+| `PATCH` | `/api/auth/users/{userId}/roles` | `ADMIN` | Replace a user's roles |
+| `PATCH` | `/api/auth/users/{userId}/enabled` | `ADMIN` | Enable or disable a user |
+
+First-admin request:
+
+```json
+{
+  "username": "admin",
+  "displayName": "Store Administrator",
+  "password": "at-least-8-characters"
+}
+```
+
+Login response:
+
+```json
+{
+  "token": "eyJ...",
+  "user": {
+    "id": "uuid",
+    "username": "admin",
+    "displayName": "Store Administrator",
+    "roles": ["ADMIN"],
+    "enabled": true,
+    "createdAt": "2026-09-07T10:00:00Z"
+  }
+}
+```
+
+Use the returned token on protected API calls:
+
+```text
+Authorization: Bearer eyJ...
+```
+
+The phone scanner endpoints remain public at the HTTP layer because the QR link contains a separate short-lived scanner token. The scanner token still only permits scans for its paired, in-progress transaction.
 
 ## REST API reference
 
