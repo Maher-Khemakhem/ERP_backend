@@ -19,7 +19,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "user")
+@Table(name = "app_user")
 public class User {
 
     @Id
@@ -41,7 +41,7 @@ public class User {
     private Instant createdAt;
 
     @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
+    @CollectionTable(name = "app_user_roles", joinColumns = @JoinColumn(name = "user_id"))
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 40)
     private Set<Role> roles = new LinkedHashSet<>();
