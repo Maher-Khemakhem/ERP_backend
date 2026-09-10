@@ -332,3 +332,9 @@ Tests are under `src/test/java` and cover application startup, modularity, procu
 - Restrict CORS in `WebConfig` to the deployed frontend origin.
 - Move temporary scanner pairings to a shared store if multiple backend instances are deployed.
 - Review VAT, currency, accounting, and date/time rules with the business owner before production use.
+
+## Owner-PC backups
+
+For the single-store Windows deployment, use the scripts in [../ops/windows/](../ops/windows/). Back up the complete `supermarket_erp` database with PostgreSQL `pg_dump` and export globals separately. Store a second copy on an external USB drive and protect the password file and globals dump as confidential data.
+
+Restore into a separate database such as `supermarket_erp_restore` first. Verify application data and authenticated workflows before replacing a live database. Take a fresh backup before every schema or application upgrade. The current `ddl-auto: update` setting is for local bootstrap only; production upgrades require reviewed Flyway or Liquibase migrations before changing to `validate` or `none`.

@@ -42,9 +42,11 @@ class PricingAdminController {
             @NotNull Instant validFrom, @NotNull Instant validUntil) {
     }
 
-    public record PromotionView(UUID id, UUID productId, boolean active) {
+    public record PromotionView(UUID id, UUID productId, BigDecimal discountPercent,
+                                Instant validFrom, Instant validUntil, boolean active) {
         static PromotionView from(Promotion p) {
-            return new PromotionView(p.getId(), p.getProductId(), p.isActive());
+            return new PromotionView(p.getId(), p.getProductId(), p.getDiscountPercent(),
+                    p.getValidFrom(), p.getValidUntil(), p.isActive());
         }
     }
 

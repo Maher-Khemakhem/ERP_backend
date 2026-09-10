@@ -104,6 +104,18 @@ public class Promotion {
         return active;
     }
 
+    public BigDecimal getDiscountPercent() {
+        return discountPercent;
+    }
+
+    public Instant getValidFrom() {
+        return validFrom;
+    }
+
+    public Instant getValidUntil() {
+        return validUntil;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

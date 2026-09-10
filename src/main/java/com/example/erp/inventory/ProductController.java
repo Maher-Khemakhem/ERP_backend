@@ -7,6 +7,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -60,5 +61,19 @@ class ProductController {
     public ResponseEntity<ProductView> get(@PathVariable UUID productId) {
         return productRepository.findById(productId).map(ProductView::from)
                 .map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/{productId}")
+    public ResponseEntity<Void> delete(@PathVariable UUID productId) {
+        if (!productRepository.existsById(productId)) {
+            return ResponseEntity.notFound().build();
+        }
+        try {
+            productRepository.deleteById(productId);
+            productRepository.flush();
+        } catch (DataIntegrityViolationException exception) {
+            return ResponseEntity.status(409).build();
+        }
+        return ResponseEntity.noContent().build();
     }
 }
