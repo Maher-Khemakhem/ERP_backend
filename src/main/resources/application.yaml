@@ -7,13 +7,6 @@ spring:
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:postgres}
 
-  flyway:
-    enabled: true
-    schemas: platform
-    default-schema: platform
-    create-schemas: true
-    locations: classpath:db/migration
-
   jpa:
     hibernate:
       # Tenant tables are migrated incrementally; keep update during Stage 1
