@@ -28,7 +28,7 @@ Business modules under `src/main/java/com/example/erp/`:
 Create the database first:
 
 ```sql
-CREATE DATABASE supermarket_erp;
+CREATE DATABASE supermarket_erp_saas;
 ```
 
 Then run the application from this directory:
@@ -43,18 +43,25 @@ Configuration is in `src/main/resources/application.yaml`:
 
 | Setting | Default |
 | --- | --- |
-| PostgreSQL URL | `jdbc:postgresql://localhost:5432/supermarket_erp` |
-| PostgreSQL user | `postgres` |
+| PostgreSQL URL | `${DB_URL:jdbc:postgresql://localhost:5432/supermarket_erp_saas}` |
+| PostgreSQL user | `${DB_USERNAME:postgres}` |
 | PostgreSQL password | `${DB_PASSWORD:postgres}` |
 | HTTP port | `8080` |
 | Hibernate schema mode | `update` (local development only) |
 
-Override the password before starting the app, for example:
+Override the database connection before starting the app, for example:
 
 ```powershell
+$env:DB_URL = "jdbc:postgresql://localhost:5432/supermarket_erp_saas"
+$env:DB_USERNAME = "postgres"
 $env:DB_PASSWORD = "your-password"
 .\mvnw.cmd spring-boot:run
 ```
+
+Flyway currently creates the `platform` schema and the initial `stores` and
+`store_users` tables. Tenant columns, identity foreign keys, and RLS policies
+are added in the next Stage 1 migration. The legacy `supermarket_erp` database
+is not modified by this application configuration.
 
 ## API conventions
 
