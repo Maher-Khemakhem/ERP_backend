@@ -58,10 +58,12 @@ $env:DB_PASSWORD = "your-password"
 .\mvnw.cmd spring-boot:run
 ```
 
-Flyway currently creates the `platform` schema and the initial `stores` and
-`store_users` tables. Tenant columns, identity foreign keys, and RLS policies
-are added in the next Stage 1 migration. The legacy `supermarket_erp` database
-is not modified by this application configuration.
+Flyway applies the migrations in `src/main/resources/db/migration/`. The
+business schemas are created and managed in the configured
+`supermarket_erp_saas` database. Migration `V6` removes the previously
+experimental multi-store tables, columns, foreign keys, and row-level security
+policies. The `platform` schema remains only as Flyway's schema-history
+location for existing databases; it contains no application store data.
 
 ## API conventions
 
@@ -88,7 +90,7 @@ is not modified by this application configuration.
 
 ## Authentication and roles
 
-The first account is created through the one-time setup endpoint. Once a user exists, public registration is closed and only an administrator can create or manage users.
+The first account is created through the one-time setup endpoint. Once a user exists, public registration is closed and only an administrator can create or manage users. The application uses one database and one store; users and roles are global to that installation.
 
 | Method | Endpoint | Access | Purpose |
 | --- | --- | --- | --- |
@@ -106,7 +108,7 @@ First-admin request:
 ```json
 {
   "username": "admin",
-  "displayName": "Store Administrator",
+  "displayName": "Administrator",
   "password": "at-least-8-characters"
 }
 ```
@@ -146,6 +148,8 @@ The following catalog reflects the controllers currently in the source tree. Req
 | `GET` | `/api/inventory/products` | List products |
 | `POST` | `/api/inventory/products` | Create a product |
 | `GET` | `/api/inventory/products/{productId}` | Get one product |
+| `GET` | `/api/inventory/product-families` | List product families |
+| `POST` | `/api/inventory/product-families` | Create a product family |
 | `GET` | `/api/inventory/stock/{productId}` | Get total stock and non-empty lots |
 | `POST` | `/api/inventory/receive-stock` | Receive stock directly |
 
@@ -154,7 +158,9 @@ Create product:
 ```json
 {
   "sku": "TOM-001",
-  "name": "Tomatoes",
+  "name": "Safia 1.5L",
+  "familyId": "uuid-of-water-family",
+  "imageUrl": "https://example.com/safia-water.jpg",
   "unitType": "WEIGHT",
   "perishable": true,
   "reorderPoint": 10,
@@ -162,7 +168,7 @@ Create product:
 }
 ```
 
-`vatRate` defaults to `19` when omitted. Receive stock accepts `productId`, `quantityValue`, `unitType`, and optional `lotNumber`, `expiryDate`, `receivedDate`, `supplierReference`, and `unitCost`; it returns `{ "status": "received" }`.
+`familyId` is optional; create a family such as `Water` first, then assign variants such as `Safia 1.5L` and `Sabrine 1.5L` to it. Each variant remains a separate sellable product with its own SKU, stock, price, and image. `vatRate` defaults to `19` when omitted. Receive stock accepts `productId`, `quantityValue`, `unitType`, and optional `lotNumber`, `expiryDate`, `receivedDate`, `supplierReference`, and `unitCost`; it returns `{ "status": "received" }`.
 
 ### Pricing
 
@@ -333,8 +339,9 @@ Tests are under `src/test/java` and cover application startup, modularity, procu
 
 ## Production checklist
 
-- Add authentication, authorization, and audit logging.
-- Replace `ddl-auto: update` with versioned database migrations.
+- Review authentication, authorization, and audit logging for the deployment.
+- Run the reviewed Flyway migrations in the deployment pipeline and change
+  `ddl-auto: update` to `validate` or `none` after the schema is established.
 - Use a secret-managed database password and a non-default database user.
 - Restrict CORS in `WebConfig` to the deployed frontend origin.
 - Move temporary scanner pairings to a shared store if multiple backend instances are deployed.
@@ -342,6 +349,6 @@ Tests are under `src/test/java` and cover application startup, modularity, procu
 
 ## Owner-PC backups
 
-For the single-store Windows deployment, use the scripts in [../ops/windows/](../ops/windows/). Back up the complete `supermarket_erp` database with PostgreSQL `pg_dump` and export globals separately. Store a second copy on an external USB drive and protect the password file and globals dump as confidential data.
+For the single-store Windows deployment, use the scripts in [../ops/windows/](../ops/windows/). Back up the complete `supermarket_erp_saas` database with PostgreSQL `pg_dump` and export globals separately. Store a second copy on an external USB drive and protect the password file and globals dump as confidential data.
 
 Restore into a separate database such as `supermarket_erp_restore` first. Verify application data and authenticated workflows before replacing a live database. Take a fresh backup before every schema or application upgrade. The current `ddl-auto: update` setting is for local bootstrap only; production upgrades require reviewed Flyway or Liquibase migrations before changing to `validate` or `none`.
