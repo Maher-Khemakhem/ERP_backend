@@ -1,119 +1,174 @@
-# Supermarket ERP Backend
+# Supermarket ERP — Backend
 
-Spring Boot REST API for the supermarket ERP. The backend is a modular monolith built with Spring Modulith and Spring Data JPA, backed by PostgreSQL.
+Spring Boot 4.1 REST API for a single-store grocery ERP.  
+The backend is a **modular monolith** structured with Spring Modulith and backed by PostgreSQL.  
+Domain events connect the business modules so that sales, goods receipts, and cash-session closings all produce balanced finance journal entries automatically.
 
-## Technology and modules
+---
 
-- Java 21
-- Spring Boot 4.1
-- Spring Web MVC, Bean Validation, Spring Data JPA
-- Spring Modulith events and JDBC event publication registry
-- PostgreSQL
-- Springdoc OpenAPI / Swagger UI
+## Technology stack
 
-Business modules under `src/main/java/com/example/erp/`:
+| Layer | Technology |
+|---|---|
+| Language | Java 21 |
+| Framework | Spring Boot 4.1 |
+| Web | Spring Web MVC |
+| Persistence | Spring Data JPA · Hibernate |
+| Database migrations | Flyway (V1–V8) |
+| Module boundaries | Spring Modulith 2.1 |
+| Security | Spring Security · Spring OAuth2 Resource Server · HS256 JWT |
+| Validation | Jakarta Bean Validation |
+| API docs | Springdoc OpenAPI / Swagger UI |
+| Database | PostgreSQL 14+ |
+
+---
+
+## Business modules
+
+All modules live under `src/main/java/com/example/erp/`.  
+Spring Modulith enforces that no module directly imports the internal packages of another; cross-module communication uses public service APIs or domain events.
 
 | Module | Responsibility |
-| --- | --- |
-| `inventory` | Products, stock levels, lots, stock receipts, and stock movements |
-| `pricing` | Product prices, promotions, and POS price calculation |
-| `pos` | Tills, cash sessions, transactions, payments, and phone scanning |
-| `procurement` | Suppliers, purchase orders, receiving, and low-stock alerts |
-| `finance` | Journals, ledger entries, P&L, supplier invoices, payments, and settlements |
-| `auth` | Users, password hashing, JWT tokens, and role management |
-| `shared` | Money, quantities, and domain-event abstractions |
+|---|---|
+| `auth` | Users, BCrypt password hashing, JWT issuance, role management, first-admin setup |
+| `inventory` | Product catalog, product families, unit types, VAT rates, FEFO lot-based stock, reorder points |
+| `pricing` | Per-product prices (TND), time-bounded percentage promotions, POS price calculation |
+| `pos` | Tills, cashier cash sessions, sale transactions, line items, cash/card payments, voids, phone-scanner QR pairing |
+| `procurement` | Suppliers, purchase orders (DRAFT → PLACED → RECEIVED), goods receipt into lots, low-stock alerts |
+| `finance` | Double-entry journal, ledger view, P&L reporting, supplier invoices, payments, card settlement — all fed by domain events |
+| `shared` | `Money` (TND, 3 dp), `Quantity` (EACH / WEIGHT), `DomainEvent` base type |
 
-## Run locally
+### Domain event flow
 
-Create the database first:
+```
+TransactionCompleted  ──→  Finance: posts sales revenue, VAT, COGS, payment entries
+GoodsReceived         ──→  Finance: posts inventory and GRNI entries
+CashSessionClosed     ──→  Finance: posts cash deposit and over/short variance
+LowStockThresholdReached ──→  Procurement: creates a low-stock alert record
+```
+
+---
+
+## Database schema
+
+The schema is managed by Flyway. Key migration history:
+
+| Version | Purpose |
+|---|---|
+| V1 | Platform / tenancy bootstrap tables |
+| V2 | Business module schemas (`inventory`, `pricing`, `pos`, `procurement`, `finance`, `auth`) |
+| V3–V5 | Experimental multi-store columns (superseded) |
+| V6 | Removes multi-store tenancy; returns to clean single-store model |
+| V7 | Adds product catalog metadata (image URL) |
+| V8 | Normalises product families into a dedicated table |
+
+`ddl-auto: update` is kept for local bootstrap. Use `validate` or `none` in production after the migrations are reviewed.
+
+---
+
+## Running locally
+
+### 1 — Create the database
 
 ```sql
 CREATE DATABASE supermarket_erp_saas;
 ```
 
-Then run the application from this directory:
+### 2 — Set environment variables (optional override)
 
 ```powershell
-.\mvnw.cmd spring-boot:run
-```
-
-The API is available at `http://localhost:8080`.
-
-Configuration is in `src/main/resources/application.yaml`:
-
-| Setting | Default |
-| --- | --- |
-| PostgreSQL URL | `${DB_URL:jdbc:postgresql://localhost:5432/supermarket_erp_saas}` |
-| PostgreSQL user | `${DB_USERNAME:postgres}` |
-| PostgreSQL password | `${DB_PASSWORD:postgres}` |
-| HTTP port | `8080` |
-| Hibernate schema mode | `update` (local development only) |
-
-Override the database connection before starting the app, for example:
-
-```powershell
-$env:DB_URL = "jdbc:postgresql://localhost:5432/supermarket_erp_saas"
+$env:DB_URL      = "jdbc:postgresql://localhost:5432/supermarket_erp_saas"
 $env:DB_USERNAME = "postgres"
 $env:DB_PASSWORD = "your-password"
+$env:JWT_SECRET  = "replace-with-at-least-32-random-chars"
+```
+
+### 3 — Start the application
+
+```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-Flyway applies the migrations in `src/main/resources/db/migration/`. The
-business schemas are created and managed in the configured
-`supermarket_erp_saas` database. Migration `V6` removes the previously
-experimental multi-store tables, columns, foreign keys, and row-level security
-policies. The `platform` schema remains only as Flyway's schema-history
-location for existing databases; it contains no application store data.
+The API is available at `http://localhost:8080`. Flyway applies all migrations on first start.
+
+### Configuration reference
+
+All settings are in `src/main/resources/application.yaml`.
+
+| Setting | Environment variable | Default (local) |
+|---|---|---|
+| PostgreSQL URL | `DB_URL` | `jdbc:postgresql://localhost:5432/supermarket_erp_saas` |
+| PostgreSQL user | `DB_USERNAME` | `postgres` |
+| PostgreSQL password | `DB_PASSWORD` | `postgres` |
+| JWT signing secret | `JWT_SECRET` | `local-only-change-this-jwt-secret-32-characters-minimum` |
+| JWT token lifetime | `JWT_EXPIRATION_SECONDS` | `28800` (8 h) |
+| Product image upload dir | `APP_UPLOAD_DIR` | `uploads/products` |
+| HTTP port | — | `8080` |
+| Hibernate schema mode | — | `update` |
+
+> **Security** The default JWT secret must be replaced in every shared or production environment. It must be at least 32 characters for HS256.
+
+---
 
 ## API conventions
 
-- Base URL: `http://localhost:8080`
-- All business endpoints start with `/api`.
+- **Base URL**: `http://localhost:8080`
+- All business endpoints are prefixed `/api`.
 - IDs are UUIDs.
-- Dates use ISO-8601 `yyyy-MM-dd`; timestamps use ISO-8601 timestamps.
-- `unitType` is `EACH` or `WEIGHT`. `EACH` quantities must be whole numbers; `WEIGHT` quantities are kilograms with three-decimal precision.
-- Monetary input is numeric JSON (for example `12.500`); monetary response fields are usually strings such as `12.500 TND`.
-- Authentication uses a stateless JWT bearer token. Send it as `Authorization: Bearer <token>` on protected requests.
-- Roles are `ADMIN`, `MANAGER`, `CASHIER`, `INVENTORY_MANAGER`, and `ACCOUNTANT`. Role changes apply when the user signs in again.
-- Validation and business errors use this shape:
+- Dates: ISO-8601 `yyyy-MM-dd`. Timestamps: ISO-8601 with time zone.
+- `unitType` is `EACH` (whole numbers) or `WEIGHT` (kilograms, three decimal places).
+- Monetary **input**: plain numeric JSON, e.g. `12.500`.
+- Monetary **output**: formatted string, e.g. `"12.500 TND"`.
+- Authentication: stateless JWT bearer token — `Authorization: Bearer <token>`.
+- Roles: `ADMIN`, `MANAGER`, `CASHIER`, `INVENTORY_MANAGER`, `ACCOUNTANT`. Role changes take effect on the next login.
 
-  ```json
-  {
-    "timestamp": "2026-09-06T12:00:00Z",
-    "status": 400,
-    "error": "Bad Request",
-    "message": "readable explanation"
-  }
-  ```
+### Error shape
 
-  Typical statuses are `400` for invalid input, `404` for missing resources, `409` for invalid state transitions, and `500` for unexpected errors.
+```json
+{
+  "timestamp": "2026-09-12T14:00:00Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Human-readable explanation"
+}
+```
 
-## Authentication and roles
+| HTTP status | Meaning |
+|---|---|
+| `400` | Invalid input or business rule violation |
+| `404` | Resource not found |
+| `409` | Invalid state transition |
+| `500` | Unexpected server error |
 
-The first account is created through the one-time setup endpoint. Once a user exists, public registration is closed and only an administrator can create or manage users. The application uses one database and one store; users and roles are global to that installation.
+---
+
+## Authentication endpoints
+
+The first account is created through the one-time setup endpoint.  
+After that, public registration is closed; only `ADMIN` can create or manage users.
 
 | Method | Endpoint | Access | Purpose |
-| --- | --- | --- | --- |
-| `GET` | `/api/auth/setup-status` | Public | Check whether the first admin must be created |
-| `POST` | `/api/auth/register` | Public, first user only | Create the first `ADMIN` account and receive a token |
-| `POST` | `/api/auth/login` | Public | Authenticate and receive a JWT token |
-| `GET` | `/api/auth/me` | Authenticated | Get the current user |
-| `GET` | `/api/auth/users` | `ADMIN` | List users |
-| `POST` | `/api/auth/users` | `ADMIN` | Create a user with roles |
+|---|---|---|---|
+| `GET` | `/api/auth/setup-status` | Public | Check whether the first admin still needs to be created |
+| `POST` | `/api/auth/register` | Public — first user only | Create the first `ADMIN` account and receive a token |
+| `POST` | `/api/auth/login` | Public | Authenticate and receive a JWT |
+| `GET` | `/api/auth/me` | Authenticated | Return the current user |
+| `GET` | `/api/auth/users` | `ADMIN` | List all users |
+| `POST` | `/api/auth/users` | `ADMIN` | Create a user with specified roles |
 | `PATCH` | `/api/auth/users/{userId}/roles` | `ADMIN` | Replace a user's roles |
-| `PATCH` | `/api/auth/users/{userId}/enabled` | `ADMIN` | Enable or disable a user |
+| `PATCH` | `/api/auth/users/{userId}/enabled` | `ADMIN` | Enable or disable a user account |
 
-First-admin request:
+**First-admin request body**
 
 ```json
 {
   "username": "admin",
-  "displayName": "Administrator",
+  "displayName": "Store Administrator",
   "password": "at-least-8-characters"
 }
 ```
 
-Login response:
+**Login response**
 
 ```json
 {
@@ -129,61 +184,82 @@ Login response:
 }
 ```
 
-Use the returned token on protected API calls:
+Send the token on every protected request:
 
-```text
+```http
 Authorization: Bearer eyJ...
 ```
 
-The phone scanner endpoints remain public at the HTTP layer because the QR link contains a separate short-lived scanner token. The scanner token still only permits scans for its paired, in-progress transaction.
+---
 
 ## REST API reference
-
-The following catalog reflects the controllers currently in the source tree. Request bodies are JSON unless stated otherwise.
 
 ### Inventory
 
 | Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/inventory/products` | List products |
+|---|---|---|
+| `GET` | `/api/inventory/products` | List all products |
 | `POST` | `/api/inventory/products` | Create a product |
 | `GET` | `/api/inventory/products/{productId}` | Get one product |
 | `GET` | `/api/inventory/product-families` | List product families |
 | `POST` | `/api/inventory/product-families` | Create a product family |
-| `GET` | `/api/inventory/stock/{productId}` | Get total stock and non-empty lots |
-| `POST` | `/api/inventory/receive-stock` | Receive stock directly |
+| `GET` | `/api/inventory/stock/{productId}` | Get total on-hand stock and non-empty lots |
+| `POST` | `/api/inventory/receive-stock` | Receive stock (creates a lot) |
 
-Create product:
+**Create product — request body**
 
 ```json
 {
-  "sku": "TOM-001",
+  "sku": "SAFIA-15L-001",
   "name": "Safia 1.5L",
   "familyId": "uuid-of-water-family",
   "imageUrl": "https://example.com/safia-water.jpg",
-  "unitType": "WEIGHT",
-  "perishable": true,
-  "reorderPoint": 10,
+  "unitType": "EACH",
+  "perishable": false,
+  "reorderPoint": 24,
   "vatRate": 19
 }
 ```
 
-`familyId` is optional; create a family such as `Water` first, then assign variants such as `Safia 1.5L` and `Sabrine 1.5L` to it. Each variant remains a separate sellable product with its own SKU, stock, price, and image. `vatRate` defaults to `19` when omitted. Receive stock accepts `productId`, `quantityValue`, `unitType`, and optional `lotNumber`, `expiryDate`, `receivedDate`, `supplierReference`, and `unitCost`; it returns `{ "status": "received" }`.
+- `familyId` is optional. Create a family (e.g. `Water`) first, then assign product variants to it.
+- `vatRate` defaults to `19` when omitted.
+- `unitType` must be `EACH` or `WEIGHT`.
+
+**Receive stock — request body**
+
+```json
+{
+  "productId": "uuid",
+  "quantityValue": 48,
+  "unitType": "EACH",
+  "lotNumber": "LOT-2026-09",
+  "expiryDate": "2027-06-01",
+  "receivedDate": "2026-09-12",
+  "supplierReference": "INV-1234",
+  "unitCost": 0.850
+}
+```
+
+Returns `{ "status": "received" }`.
+
+---
 
 ### Pricing
 
 | Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/pricing/prices` | List product prices |
-| `POST` | `/api/pricing/prices` | Create or update a product price (idempotent by product) |
-| `GET` | `/api/pricing/prices/{productId}` | Get one product price |
+|---|---|---|
+| `GET` | `/api/pricing/prices` | List all product prices |
+| `POST` | `/api/pricing/prices` | Create or update a price (upsert by product) |
+| `GET` | `/api/pricing/prices/{productId}` | Get the price for one product |
 | `DELETE` | `/api/pricing/prices/{productId}` | Delete a product price |
-| `GET` | `/api/pricing/promotions` | List promotions |
-| `POST` | `/api/pricing/promotions` | Create a percentage promotion |
-| `GET` | `/api/pricing/promotions/{productId}` | List promotions for a product |
+| `GET` | `/api/pricing/promotions` | List all promotions |
+| `POST` | `/api/pricing/promotions` | Create a time-bounded percentage promotion |
+| `GET` | `/api/pricing/promotions/{productId}` | List promotions for one product |
 | `DELETE` | `/api/pricing/promotions/{promotionId}` | Deactivate a promotion |
 
-Price input is `{ "productId": "uuid", "unitPrice": 3.2 }`. Promotion input is:
+**Set price** — `{ "productId": "uuid", "unitPrice": 3.200 }`
+
+**Create promotion**
 
 ```json
 {
@@ -194,98 +270,91 @@ Price input is `{ "productId": "uuid", "unitPrice": 3.2 }`. Promotion input is:
 }
 ```
 
+---
+
 ### Point of sale
 
 #### Tills and cash sessions
 
 | Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/pos/tills` | List tills with their latest session summary |
-| `POST` | `/api/pos/tills` | Create a till; body `{ "tillNumber": "TILL-01" }` |
+|---|---|---|
+| `GET` | `/api/pos/tills` | List tills with latest session summary |
+| `POST` | `/api/pos/tills` | Create a till — `{ "tillNumber": "TILL-01" }` |
 | `GET` | `/api/pos/tills/{tillId}` | Get one till |
-| `POST` | `/api/pos/sessions/open` | Open a cash session |
+| `POST` | `/api/pos/sessions/open` | Open a cashier session |
 | `GET` | `/api/pos/sessions/{cashSessionId}` | Get a session |
-| `GET` | `/api/pos/sessions/active?tillId={tillId}` | Get the open session, or `204` if none exists |
+| `GET` | `/api/pos/sessions/active?tillId={tillId}` | Get the active session, or `204` if none |
 | `POST` | `/api/pos/sessions/{cashSessionId}/close` | Close a session |
 
-Open and close bodies:
-
-```json
-// POST /api/pos/sessions/open
-{
-  "tillId": "uuid",
-  "cashierName": "Alex",
-  "openingFloat": 100
-}
-
-// POST /api/pos/sessions/{cashSessionId}/close
-{
-  "countedCash": 245.5
-}
-```
+**Open session** — `{ "tillId": "uuid", "cashierName": "Alex", "openingFloat": 100 }`  
+**Close session** — `{ "countedCash": 245.500 }`
 
 #### Transactions
 
 | Method | Endpoint | Purpose |
-| --- | --- | --- |
+|---|---|---|
 | `GET` | `/api/pos/transactions` | List transactions, newest first |
-| `POST` | `/api/pos/transactions/start` | Start a transaction; body `{ "cashSessionId": "uuid" }` |
-| `GET` | `/api/pos/transactions/{transactionId}` | Get a transaction and lines |
+| `POST` | `/api/pos/transactions/start` | Start a transaction — `{ "cashSessionId": "uuid" }` |
+| `GET` | `/api/pos/transactions/{transactionId}` | Get a transaction with all lines |
 | `POST` | `/api/pos/transactions/{transactionId}/lines` | Add a product line |
 | `DELETE` | `/api/pos/transactions/{transactionId}/lines/{lineId}` | Remove a line |
-| `POST` | `/api/pos/transactions/{transactionId}/complete` | Complete and pay a transaction |
+| `POST` | `/api/pos/transactions/{transactionId}/complete` | Complete and pay |
 | `POST` | `/api/pos/transactions/{transactionId}/void` | Void an in-progress transaction |
 | `DELETE` | `/api/pos/transactions/{transactionId}` | Delete an in-progress transaction |
 
-Add a line with `{ "productId": "uuid", "quantityValue": 2, "unitType": "EACH" }`. Complete with `paymentMethod` `CASH` or `CARD`; `amountReceived` is optional, but if supplied cash must cover the total and card must equal the total:
+**Add line** — `{ "productId": "uuid", "quantityValue": 2, "unitType": "EACH" }`
+
+**Complete transaction**
 
 ```json
 {
   "paymentMethod": "CASH",
-  "amountReceived": 20
+  "amountReceived": 20.000
 }
 ```
 
-POS prices are VAT-exclusive. The ticket applies the configured 19% VAT rate to the final net subtotal. Completing a sale deducts inventory and publishes a finance event.
+`paymentMethod` is `CASH` or `CARD`. For cash, `amountReceived` must cover the total. For card, it must equal the total exactly. Completing a sale deducts inventory (FEFO order) and publishes a `TransactionCompleted` event for finance.
+
+> **Note** POS prices are VAT-exclusive. The ticket applies the store's configured 19 % VAT rate to the net subtotal.
 
 #### Phone scanner
 
 | Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/pos/transactions/{transactionId}/scanner-session` | Create a 30-minute pairing; returns `sessionId`, `token`, and `expiresAt` |
-| `POST` | `/api/pos/scanner-sessions/{sessionId}/scans` | Scan a barcode using `X-Scanner-Token` and `{ "barcode": "SKU" }` |
-| `DELETE` | `/api/pos/scanner-sessions/{sessionId}` | Close a pairing using `X-Scanner-Token` |
+|---|---|---|
+| `POST` | `/api/pos/transactions/{transactionId}/scanner-session` | Create a 30-minute phone pairing; returns `sessionId`, `token`, `expiresAt` |
+| `POST` | `/api/pos/scanner-sessions/{sessionId}/scans` | Submit a barcode scan (header `X-Scanner-Token`, body `{ "barcode": "SKU" }`) |
+| `DELETE` | `/api/pos/scanner-sessions/{sessionId}` | Close the pairing (header `X-Scanner-Token`) |
 
-The phone scanner looks up the barcode as a product SKU. A scanned `WEIGHT` item adds `0.1 kg`; an `EACH` item adds one unit. Pairings are held in memory and are invalidated when the backend restarts.
+The scanner resolves the barcode as a product SKU. `EACH` items add 1 unit; `WEIGHT` items add 0.1 kg. Pairings are in-memory and are lost on backend restart.
+
+---
 
 ### Procurement
 
 #### Suppliers
 
 | Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/procurement/suppliers` | List suppliers |
+|---|---|---|
+| `GET` | `/api/procurement/suppliers` | List all suppliers |
 | `POST` | `/api/procurement/suppliers` | Create a supplier |
 | `GET` | `/api/procurement/suppliers/{id}` | Get one supplier |
-| `PUT` | `/api/procurement/suppliers/{id}` | Replace supplier details |
+| `PUT` | `/api/procurement/suppliers/{id}` | Update supplier details |
 | `DELETE` | `/api/procurement/suppliers/{id}` | Delete a supplier |
 
-Supplier input uses `name`, `contactEmail`, `phone`, and `address`. The current domain model persists the name, phone, and email; `address` is accepted by the DTO but is not currently stored.
+Fields: `name`, `contactEmail`, `phone`, `address`. Note: `address` is accepted by the DTO but not currently persisted.
 
-#### Purchase orders and alerts
+#### Purchase orders
 
 | Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/procurement/orders` | List purchase orders |
+|---|---|---|
+| `GET` | `/api/procurement/orders` | List all purchase orders |
 | `POST` | `/api/procurement/orders` | Create a draft order |
 | `GET` | `/api/procurement/orders/{id}` | Get an order |
-| `POST` | `/api/procurement/orders/{id}/place` | Move a draft to `PLACED` |
+| `POST` | `/api/procurement/orders/{id}/place` | Advance draft → `PLACED` |
 | `POST` | `/api/procurement/orders/{id}/cancel` | Cancel a draft or placed order |
-| `POST` | `/api/procurement/orders/{id}/receive` | Receive one or more order lines |
-| `GET` | `/api/procurement/alerts` | List low-stock alerts |
-| `POST` | `/api/procurement/alerts/{id}/acknowledge` | Acknowledge an alert |
+| `POST` | `/api/procurement/orders/{id}/receive` | Receive goods and update stock |
 
-Create order body:
+**Create order**
 
 ```json
 {
@@ -295,60 +364,106 @@ Create order body:
       "productId": "uuid",
       "quantityValue": 12,
       "unitType": "EACH",
-      "unitCost": 1.25
+      "unitCost": 1.250
     }
   ]
 }
 ```
 
-Receive order lines with `purchaseOrderLineId`, `quantityValue`, `unitType`, and optional `lotNumber`, `expiryDate`, `receivedDate`, and `supplierReference`. Order statuses are `DRAFT`, `PLACED`, `RECEIVED`, and `CANCELLED`.
+Order statuses: `DRAFT` → `PLACED` → `RECEIVED`; or `CANCELLED` from `DRAFT`/`PLACED`.
+
+#### Low-stock alerts
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/procurement/alerts` | List low-stock alerts |
+| `POST` | `/api/procurement/alerts/{id}/acknowledge` | Acknowledge an alert |
+
+Alerts are raised automatically when a product's on-hand quantity falls below its `reorderPoint`. They do not automatically create purchase orders.
+
+---
 
 ### Finance
 
 | Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/finance/ledger` | Backward-compatible flattened ledger view |
-| `GET` | `/api/finance/journals` | Balanced journal entries and debit/credit lines |
-| `GET` | `/api/finance/reports/profit-and-loss` | P&L for the current month or a requested date range |
+|---|---|---|
+| `GET` | `/api/finance/ledger` | Flattened ledger view (backward-compatible) |
+| `GET` | `/api/finance/journals` | Balanced journal entries with debit/credit lines |
+| `GET` | `/api/finance/reports/profit-and-loss` | P&L for the current month or a date range |
 | `GET` | `/api/finance/supplier-invoices` | List supplier invoices |
-| `POST` | `/api/finance/supplier-invoices` | Create an invoice |
-| `POST` | `/api/finance/supplier-invoices/{invoiceId}/payments` | Record an invoice payment |
-| `POST` | `/api/finance/settlements/card` | Settle card clearing to the bank |
+| `POST` | `/api/finance/supplier-invoices` | Create a supplier invoice |
+| `POST` | `/api/finance/supplier-invoices/{invoiceId}/payments` | Record a payment against an invoice |
+| `POST` | `/api/finance/settlements/card` | Settle card clearing to the bank account |
 
-The P&L accepts optional `from=yyyy-MM-dd` and `to=yyyy-MM-dd` query parameters. Invoice creation accepts `supplierId`, optional `purchaseOrderId`, `invoiceNumber`, `subtotal`, `vatRate`, optional `issueDate`, and optional `dueDate`. Payment accepts `paymentReference`, `amount`, `paymentMethod`, and optional `paidDate`. Card settlement accepts `settlementReference`, `amount`, and optional `settlementDate`.
+**P&L query parameters**: `from=yyyy-MM-dd` and `to=yyyy-MM-dd` (both optional; defaults to current month).
 
-Journal event keys are used for idempotency when domain events are replayed, so a replay does not create duplicate journal entries.
+**Create invoice**
+
+```json
+{
+  "supplierId": "uuid",
+  "purchaseOrderId": "uuid",
+  "invoiceNumber": "INV-2026-001",
+  "subtotal": 150.000,
+  "vatRate": 19,
+  "issueDate": "2026-09-10",
+  "dueDate": "2026-10-10"
+}
+```
+
+**Record payment** — `{ "paymentReference": "PAY-001", "amount": 150.000, "paymentMethod": "BANK_TRANSFER", "paidDate": "2026-09-12" }`
+
+Journal entries are created idempotently using event keys, so replaying a domain event never duplicates a journal entry.
+
+---
 
 ## Observability and API discovery
 
-With the backend running:
+| URL | Description |
+|---|---|
+| `http://localhost:8080/swagger-ui/index.html` | Interactive Swagger UI |
+| `http://localhost:8080/v3/api-docs` | OpenAPI 3 JSON document |
 
-- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
-- OpenAPI document: `http://localhost:8080/v3/api-docs`
+> `spring-boot-starter-actuator` is not currently in `pom.xml`. Add it before relying on `/actuator/health`, `/actuator/info`, or `/actuator/modulith`.
 
-`application.yaml` contains management endpoint exposure settings, but Actuator is not currently declared as a Maven dependency. Add `spring-boot-starter-actuator` before relying on `/actuator/health` or `/actuator/modulith`.
+---
 
 ## Tests and build
 
 ```powershell
+# Run all tests (unit, integration, Spring Modulith boundary verification)
 .\mvnw.cmd test
+
+# Build the production JAR
 .\mvnw.cmd package
 ```
 
-Tests are under `src/test/java` and cover application startup, modularity, procurement, POS, finance, and scanner behavior.
+Tests live under `src/test/java/com/example/erp/` and cover application context startup, module boundary enforcement (`ModularityTests`), POS workflows, procurement, finance event listeners, and the phone-scanner pairing.
+
+---
 
 ## Production checklist
 
-- Review authentication, authorization, and audit logging for the deployment.
-- Run the reviewed Flyway migrations in the deployment pipeline and change
-  `ddl-auto: update` to `validate` or `none` after the schema is established.
-- Use a secret-managed database password and a non-default database user.
-- Restrict CORS in `WebConfig` to the deployed frontend origin.
-- Move temporary scanner pairings to a shared store if multiple backend instances are deployed.
-- Review VAT, currency, accounting, and date/time rules with the business owner before production use.
+> **⚠ Review every item below before opening the store to real data.**
 
-## Owner-PC backups
+- [ ] Replace `JWT_SECRET` with a strong, randomly generated value (≥ 32 chars).
+- [ ] Use a dedicated database user and strong `DB_PASSWORD`; revoke `postgres` superuser access.
+- [ ] Restrict CORS in `WebConfig.java` to the deployed frontend origin only.
+- [ ] Change `ddl-auto: update` → `validate` (or `none`) after Flyway migrations are established.
+- [ ] Verify product VAT rates, currency (TND), and accounting rules with the business owner.
+- [ ] Move scanner pairings to a shared store (Redis, etc.) if multiple backend instances are deployed.
+- [ ] Add `spring-boot-starter-actuator` for health and readiness probes.
+- [ ] Configure and test nightly PostgreSQL backups — see [`../ops/windows/`](../ops/windows/).
 
-For the single-store Windows deployment, use the scripts in [../ops/windows/](../ops/windows/). Back up the complete `supermarket_erp_saas` database with PostgreSQL `pg_dump` and export globals separately. Store a second copy on an external USB drive and protect the password file and globals dump as confidential data.
+---
 
-Restore into a separate database such as `supermarket_erp_restore` first. Verify application data and authenticated workflows before replacing a live database. Take a fresh backup before every schema or application upgrade. The current `ddl-auto: update` setting is for local bootstrap only; production upgrades require reviewed Flyway or Liquibase migrations before changing to `validate` or `none`.
+## Backup and restore (Windows store PC)
+
+Use the PowerShell scripts in [`../ops/windows/`](../ops/windows/):
+
+- `Backup-Postgres.ps1` — custom-format dump + globals + SHA-256 checksums, with retention management.
+- `Register-ERPBackupTask.ps1` — registers a nightly Windows Task Scheduler job.
+- `Verify-PostgresBackup.ps1` — verifies checksum integrity before a restore.
+- `Restore-Postgres.ps1` — restores into a named database (use a separate test database first).
+
+Always test a restore into `supermarket_erp_restore` and verify data before touching the live database. Take a fresh backup before every schema upgrade.
