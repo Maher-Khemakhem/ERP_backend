@@ -14,18 +14,22 @@ spring:
 
   jpa:
     hibernate:
-      # Tenant tables are migrated incrementally; keep update during Stage 1
-      # until the complete tenant-column migration replaces legacy bootstrap.
-      ddl-auto: update
+      # Switched from 'update' to 'validate': ddl-auto=update was silently
+      # re-narrowing event_publication columns back to varchar(255) on every
+      # restart, based on Modulith's default JPA entity mapping. Flyway is
+      # now the single source of truth for schema changes.
+      ddl-auto: validate
     open-in-view: false   # never leave this true in a real app - hides N+1s
 
   modulith:
     events:
+      jdbc:
+        schema: platform
       # Spring Modulith's event publication registry = our outbox.
       # Failed/unprocessed events are persisted here and can be
       # externalized to Rabbit/Kafka later with almost no code change.
       jdbc-schema-initialization:
-        enabled: true
+        enabled: false
 
 management:
   endpoints:
