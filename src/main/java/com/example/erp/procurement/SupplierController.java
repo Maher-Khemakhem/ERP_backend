@@ -22,7 +22,7 @@ class SupplierController {
 
     public record SupplierView(UUID id, String name, String contactEmail, String phone, String address) {
         static SupplierView from(Supplier s) {
-            return new SupplierView(s.getId(), s.getName(), s.getContactEmail(), s.getContactPhone(), null);
+            return new SupplierView(s.getId(), s.getName(), s.getContactEmail(), s.getContactPhone(), s.getAddress());
         }
     }
 
@@ -44,7 +44,7 @@ class SupplierController {
 
     @PostMapping
     public ResponseEntity<Map<String, UUID>> create(@RequestBody CreateSupplierRequest request) {
-        Supplier supplier = Supplier.create(request.name(), request.phone(), request.contactEmail());
+        Supplier supplier = Supplier.create(request.name(), request.phone(), request.contactEmail(), request.address());
         supplierRepository.save(supplier);
         return ResponseEntity.ok(Map.of("id", supplier.getId()));
     }
@@ -53,16 +53,8 @@ class SupplierController {
     public ResponseEntity<Map<String, UUID>> update(@PathVariable UUID id, @RequestBody CreateSupplierRequest request) {
         return supplierRepository.findById(id)
                 .map(supplier -> {
-                    Supplier updated = Supplier.create(request.name(), request.phone(), request.contactEmail());
-                    // Preserve the original ID
-                    try {
-                        var field = Supplier.class.getDeclaredField("id");
-                        field.setAccessible(true);
-                        field.set(updated, id);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                    supplierRepository.save(updated);
+                    supplier.update(request.name(), request.phone(), request.contactEmail(), request.address());
+                    supplierRepository.save(supplier);
                     return ResponseEntity.ok(Map.of("id", id));
                 })
                 .orElse(ResponseEntity.notFound().build());
