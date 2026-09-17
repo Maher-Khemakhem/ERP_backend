@@ -131,6 +131,10 @@ public class Lot {
         return unitCost == null ? Money.zero() : unitCost;
     }
 
+    public String getSupplierReference() {
+        return supplierReference;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

@@ -70,7 +70,7 @@ public class PosController {
                            String netTotal, String vatAmount) {
         static LineView from(TransactionLine line) {
             return new LineView(line.getId(), line.getProductId(), line.getQuantity().toString(),
-                    line.getNetTotal().toString(), line.getNetTotal().toString(), Money.zero().toString());
+                    line.getLineTotal().toString(), line.getNetTotal().toString(), line.getVatAmount().toString());
         }
     }
 

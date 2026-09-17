@@ -19,6 +19,13 @@ public class Product {
     @Column(nullable = false)
     private String name;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "family_id")
+    private ProductFamily family;
+
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Quantity.UnitType unitType;
@@ -35,12 +42,14 @@ public class Product {
         // requis par JPA/Hibernate
     }
 
-    private Product(UUID id, String sku, String name,
+    private Product(UUID id, String sku, String name, ProductFamily family, String imageUrl,
                     Quantity.UnitType unitType, boolean perishable, int reorderPoint,
                     BigDecimal vatRate) {
         this.id = Objects.requireNonNull(id);
         this.sku = requireNonBlank(sku, "sku");
         this.name = requireNonBlank(name, "name");
+        this.family = family;
+        this.imageUrl = normalizeOptional(imageUrl);
         this.unitType = Objects.requireNonNull(unitType);
         this.perishable = perishable;
         this.reorderPoint = reorderPoint;
@@ -54,10 +63,16 @@ public class Product {
 
     public static Product create(String sku, String name, Quantity.UnitType unitType,
                                  boolean perishable, int reorderPoint, BigDecimal vatRate) {
+        return create(sku, name, null, null, unitType, perishable, reorderPoint, vatRate);
+    }
+
+    public static Product create(String sku, String name, ProductFamily family, String imageUrl,
+                                 Quantity.UnitType unitType, boolean perishable, int reorderPoint,
+                                 BigDecimal vatRate) {
         if (reorderPoint < 0) {
             throw new IllegalArgumentException("Le seuil de réapprovisionnement ne peut pas être négatif");
         }
-        return new Product(UUID.randomUUID(), sku, name, unitType, perishable, reorderPoint, vatRate);
+        return new Product(UUID.randomUUID(), sku, name, family, imageUrl, unitType, perishable, reorderPoint, vatRate);
     }
 
     private static String requireNonBlank(String value, String fieldName) {
@@ -65,6 +80,10 @@ public class Product {
             throw new IllegalArgumentException(fieldName + " ne peut pas être vide");
         }
         return value;
+    }
+
+    private static String normalizeOptional(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private static BigDecimal requireVatRate(BigDecimal value) {
@@ -85,6 +104,14 @@ public class Product {
 
     public String getName() {
         return name;
+    }
+
+    public ProductFamily getFamily() {
+        return family;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
     }
 
     public Quantity.UnitType getUnitType() {
