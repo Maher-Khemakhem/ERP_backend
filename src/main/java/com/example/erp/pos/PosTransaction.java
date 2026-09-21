@@ -4,8 +4,6 @@ import com.example.erp.shared.Money;
 import com.example.erp.shared.Quantity;
 import jakarta.persistence.*;
 import java.time.Instant;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -14,7 +12,6 @@ import java.util.UUID;
 @Entity
 @Table(name = "pos_transaction", schema = "pos")
 public class PosTransaction {
-    private static final BigDecimal DEFAULT_VAT_RATE = BigDecimal.valueOf(19);
 
     @Id
     private UUID id;
@@ -81,7 +78,9 @@ public class PosTransaction {
     }
 
     private Money calculateTotal() {
-        return getNetTotal().add(getVatTotal());
+        Money total = Money.zero();
+        for (TransactionLine line : lines) total = total.add(line.getLineTotal());
+        return total;
     }
 
     private Money calculateSubtotal() {
@@ -100,13 +99,16 @@ public class PosTransaction {
     public UUID getCashSessionId() { return cashSessionId; }
     public TransactionStatus getStatus() { return status; }
     public PaymentMethod getPaymentMethod() { return paymentMethod; }
-    /** Customer prices are VAT-exclusive; VAT is applied once to the ticket subtotal. */
+    /** Total includes per-line VAT amounts stored at the time of line creation. */
     public Money getTotal() { return calculateTotal(); }
+    /** Sum of line-level VAT amounts — each line carries the VAT computed from its product's catalog rate. */
     public Money getVatTotal() {
-        return calculateSubtotal().multiply(DEFAULT_VAT_RATE.divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP));
+        Money vat = Money.zero();
+        for (TransactionLine line : lines) vat = vat.add(line.getVatAmount());
+        return vat;
     }
+    /** Net total = gross total minus per-line VAT. */
     public Money getNetTotal() { return calculateSubtotal(); }
-    public BigDecimal getVatRate() { return DEFAULT_VAT_RATE; }
     public List<TransactionLine> getLines() { return List.copyOf(lines); }
     public Instant getStartedAt() { return startedAt; }
     public Instant getCompletedAt() { return completedAt; }

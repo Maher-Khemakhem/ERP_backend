@@ -73,6 +73,15 @@ public class InventoryService {
         return productRepository.findBySku(sku.trim());
     }
 
+    /** Resolves a product by its primary key — used by other modules to read catalog data. */
+    @Transactional(readOnly = true)
+    public Optional<Product> findProductById(UUID productId) {
+        if (productId == null) {
+            return Optional.empty();
+        }
+        return productRepository.findById(productId);
+    }
+
     @Transactional(readOnly = true)
     public java.math.BigDecimal vatRateFor(UUID productId) {
         return productRepository.findById(productId)
@@ -146,6 +155,16 @@ public class InventoryService {
     public StockLevel getStockLevel(UUID productId) {
         return stockRepository.findByProductId(productId)
                 .orElseThrow(() -> new IllegalArgumentException("Aucun stock pour ce produit : " + productId));
+    }
+
+    /** Returns the total on-hand quantity for a product, or 0.0 if no stock record exists. */
+    @Transactional(readOnly = true)
+    public double totalOnHandQuantity(UUID productId) {
+        return stockRepository.findByProductId(productId)
+                .map(stock -> stock.getLots().stream()
+                        .mapToDouble(e -> e.available().value().doubleValue())
+                        .sum())
+                .orElse(0.0);
     }
 
     private int reorderPointFor(UUID productId) {

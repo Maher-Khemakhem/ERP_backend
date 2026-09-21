@@ -3,24 +3,33 @@ spring:
     name: ERP
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/supermarket_erp
-    username: postgres
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/supermarket_erp_saas}
+    username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:postgres}
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
 
   jpa:
     hibernate:
-      # Use Flyway/Liquibase for real schema management once we add
-      # migrations in a later part - "update" is fine for local bootstrap only.
-      ddl-auto: update
+      # Switched from 'update' to 'validate': ddl-auto=update was silently
+      # re-narrowing event_publication columns back to varchar(255) on every
+      # restart, based on Modulith's default JPA entity mapping. Flyway is
+      # now the single source of truth for schema changes.
+      ddl-auto: validate
     open-in-view: false   # never leave this true in a real app - hides N+1s
 
   modulith:
     events:
+      jdbc:
+        schema: platform
       # Spring Modulith's event publication registry = our outbox.
       # Failed/unprocessed events are persisted here and can be
       # externalized to Rabbit/Kafka later with almost no code change.
       jdbc-schema-initialization:
-        enabled: true
+        enabled: false
 
 management:
   endpoints:
@@ -32,6 +41,7 @@ server:
   port: 8080
 
 app:
+  upload-dir: ${APP_UPLOAD_DIR:uploads/products}
   security:
     # Required. Never provide a default secret here.
     # Generate at least 32 random bytes and provide it through the environment.

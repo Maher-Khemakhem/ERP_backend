@@ -74,6 +74,7 @@ class SecurityConfig {
 
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(authorities);
+        converter.setPrincipalClaimName("sub");
         return converter;
     }
 
@@ -86,6 +87,7 @@ class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/setup-status").permitAll()
+                        .requestMatchers("/uploads/products/**").permitAll()
                         // The pairing token is the authentication mechanism for the phone scanner.
                         .requestMatchers("/api/pos/scanner-sessions/**").permitAll()
                         .requestMatchers(HttpMethod.GET,

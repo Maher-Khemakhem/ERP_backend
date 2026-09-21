@@ -1,0 +1,3 @@
+ALTER TABLE inventory.product
+    ADD COLUMN IF NOT EXISTS family_name VARCHAR(160),
+    ADD COLUMN IF NOT EXISTS image_url VARCHAR(500);

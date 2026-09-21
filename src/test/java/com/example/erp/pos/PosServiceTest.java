@@ -1,6 +1,7 @@
 package com.example.erp.pos;
 
 import com.example.erp.inventory.InventoryService;
+import com.example.erp.inventory.StockLevel;
 import com.example.erp.shared.Money;
 import com.example.erp.shared.Quantity;
 import org.junit.jupiter.api.Test;
@@ -44,8 +45,6 @@ class PosServiceTest {
 
     @Test
     void createTill_allowsMultipleTills() {
-        when(tillRepository.count()).thenReturn(0L, 1L);
-
         assertThatCode(() -> {
             posService.createTill("Till 1");
             posService.createTill("Till 2");

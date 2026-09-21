@@ -51,7 +51,7 @@ public class AuthService {
             throw new IllegalStateException("The initial administrator has already been created");
         }
         User user = createUser(username, displayName, password, Set.of(Role.ADMIN));
-        return issueToken(user);
+        return issueToken(user, Set.of(Role.ADMIN));
     }
 
     @Transactional(readOnly = true)
@@ -61,7 +61,7 @@ public class AuthService {
         if (!user.isEnabled() || !passwordEncoder.matches(password == null ? "" : password, user.getPasswordHash())) {
             throw new InvalidCredentialsException();
         }
-        return issueToken(user);
+        return issueToken(user, user.getRoles());
     }
 
     @Transactional
@@ -105,10 +105,10 @@ public class AuthService {
             throw new IllegalArgumentException("Password must contain at least 8 characters");
         }
         User user = User.create(normalizedUsername, displayName, passwordEncoder.encode(password), roles);
-        return userRepository.save(user);
+        return userRepository.saveAndFlush(user);
     }
 
-    private AuthController.AuthResponse issueToken(User user) {
+    private AuthController.AuthResponse issueToken(User user, Set<Role> roles) {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(jwtIssuer)
@@ -118,7 +118,7 @@ public class AuthService {
                 .claim("aud", List.of(jwtAudience))
                 .claim("jti", UUID.randomUUID().toString())
                 .claim("userId", user.getId().toString())
-                .claim("roles", user.getRoles().stream().map(Role::name).sorted().toList())
+                .claim("roles", roles.stream().map(Role::name).sorted().toList())
                 .build();
 
         String token = jwtEncoder.encode(JwtEncoderParameters.from(

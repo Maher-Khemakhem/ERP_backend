@@ -27,19 +27,35 @@ public class Supplier {
     @Column(name = "contact_email")
     private String contactEmail;
 
+    @Column(name = "address", length = 500)
+    private String address;
+
     protected Supplier() {
         // requis par JPA/Hibernate
     }
 
-    private Supplier(UUID id, String name, String contactPhone, String contactEmail) {
+    private Supplier(UUID id, String name, String contactPhone, String contactEmail, String address) {
         this.id = Objects.requireNonNull(id);
         this.name = requireNonBlank(name, "name");
         this.contactPhone = contactPhone;
         this.contactEmail = contactEmail;
+        this.address = address;
     }
 
     public static Supplier create(String name, String contactPhone, String contactEmail) {
-        return new Supplier(UUID.randomUUID(), name, contactPhone, contactEmail);
+        return create(name, contactPhone, contactEmail, null);
+    }
+
+    public static Supplier create(String name, String contactPhone, String contactEmail, String address) {
+        return new Supplier(UUID.randomUUID(), name, contactPhone, contactEmail, address);
+    }
+
+    /** Updates mutable fields in place, preserving the identity (id). */
+    public void update(String name, String contactPhone, String contactEmail, String address) {
+        this.name = requireNonBlank(name, "name");
+        this.contactPhone = contactPhone;
+        this.contactEmail = contactEmail;
+        this.address = address;
     }
 
     private static String requireNonBlank(String value, String fieldName) {
@@ -63,6 +79,10 @@ public class Supplier {
 
     public String getContactEmail() {
         return contactEmail;
+    }
+
+    public String getAddress() {
+        return address;
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.example.erp.inventory;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.EntityGraph;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -13,5 +14,14 @@ import java.util.UUID;
  * événements ou par des méthodes publiques de InventoryService.
  */
 interface ProductRepository extends JpaRepository<Product, UUID> {
+    @Override
+    @EntityGraph(attributePaths = "family")
+    java.util.List<Product> findAll();
+
+    @Override
+    @EntityGraph(attributePaths = "family")
+    Optional<Product> findById(UUID id);
+
+    @EntityGraph(attributePaths = "family")
     Optional<Product> findBySku(String sku);
 }

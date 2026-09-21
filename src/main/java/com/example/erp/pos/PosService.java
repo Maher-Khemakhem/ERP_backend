@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -79,9 +81,14 @@ public class PosService {
         requireOpenSession(transaction.getCashSessionId());
         inventoryService.validateProductForSale(productId, quantity.unitType());
 
-        // Keep each product line at its net price. The transaction applies VAT
-        // once to the final ticket subtotal.
-        UUID lineId = transaction.addLine(productId, quantity, calculatedPrice, Money.zero());
+        // Compute per-product VAT from the catalog rate so that mixed-VAT
+        // baskets are accounted correctly rather than using a single flat rate.
+        BigDecimal vatRate = inventoryService.vatRateFor(productId);
+        Money vatAmount = calculatedPrice.multiply(
+                vatRate.divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP));
+        Money lineTotalWithVat = calculatedPrice.add(vatAmount);
+
+        UUID lineId = transaction.addLine(productId, quantity, lineTotalWithVat, vatAmount);
         transactionRepository.save(transaction);
         return lineId;
     }
