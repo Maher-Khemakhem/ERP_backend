@@ -49,6 +49,17 @@ Configuration is in `src/main/resources/application.yaml`:
 | HTTP port | `8080` |
 | Hibernate schema mode | `update` (local development only) |
 
+The JWT secret is required and has no fallback. Set it before starting the backend:
+
+```powershell
+$env:JWT_SECRET = "replace-with-at-least-32-random-bytes"
+$env:JWT_ISSUER = "supermarket-erp"
+$env:JWT_AUDIENCE = "supermarket-web"
+.\mvnw.cmd spring-boot:run
+```
+
+JWT access tokens expire after 15 minutes by default. Refresh-token rotation will be added in the next authentication hardening phase.
+
 Override the password before starting the app, for example:
 
 ```powershell

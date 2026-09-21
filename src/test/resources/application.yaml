@@ -1,0 +1,6 @@
+app:
+  security:
+    jwt-secret: test-only-secret-that-is-at-least-32-bytes-long
+    jwt-issuer: supermarket-erp
+    jwt-audience: supermarket-web
+    jwt-expiration-seconds: 900

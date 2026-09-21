@@ -23,15 +23,21 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtEncoder jwtEncoder;
     private final long jwtExpirationSeconds;
+    private final String jwtIssuer;
+    private final String jwtAudience;
 
     AuthService(UserRepository userRepository,
                 PasswordEncoder passwordEncoder,
                 JwtEncoder jwtEncoder,
-                @Value("${app.security.jwt-expiration-seconds:28800}") long jwtExpirationSeconds) {
+                @Value("${app.security.jwt-expiration-seconds:900}") long jwtExpirationSeconds,
+                @Value("${app.security.jwt-issuer}") String jwtIssuer,
+                @Value("${app.security.jwt-audience}") String jwtAudience) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtEncoder = jwtEncoder;
         this.jwtExpirationSeconds = jwtExpirationSeconds;
+        this.jwtIssuer = jwtIssuer;
+        this.jwtAudience = jwtAudience;
     }
 
     @Transactional(readOnly = true)
@@ -105,10 +111,12 @@ public class AuthService {
     private AuthController.AuthResponse issueToken(User user) {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
-                .issuer("supermarket-erp")
+                .issuer(jwtIssuer)
                 .subject(user.getUsername())
                 .issuedAt(now)
                 .expiresAt(now.plusSeconds(jwtExpirationSeconds))
+                .claim("aud", List.of(jwtAudience))
+                .claim("jti", UUID.randomUUID().toString())
                 .claim("userId", user.getId().toString())
                 .claim("roles", user.getRoles().stream().map(Role::name).sorted().toList())
                 .build();
