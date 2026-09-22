@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,9 +24,11 @@ import java.util.UUID;
 public class AuthController {
 
     private final AuthService authService;
+    private final LoginRateLimiter loginRateLimiter;
 
-    AuthController(AuthService authService) {
+    AuthController(AuthService authService, LoginRateLimiter loginRateLimiter) {
         this.authService = authService;
+        this.loginRateLimiter = loginRateLimiter;
     }
 
     public record LoginRequest(@NotBlank String username, @NotBlank String password) {
@@ -74,8 +77,32 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
+    public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+        loginRateLimiter.check(clientIp(httpRequest), request.username());
         return authService.login(request.username(), request.password());
+    }
+
+    private static String clientIp(HttpServletRequest request) {
+        // Caddy is the only trusted proxy in the deployed topology. It
+        // overwrites X-Forwarded-For with the connecting client address.
+        String remoteAddress = request.getRemoteAddr();
+        if (isLoopback(remoteAddress)) {
+            String forwardedFor = request.getHeader("X-Forwarded-For");
+            if (forwardedFor != null && !forwardedFor.isBlank()) {
+                String[] addresses = forwardedFor.split(",");
+                String clientAddress = addresses[addresses.length - 1].trim();
+                if (!clientAddress.isBlank()) {
+                    return clientAddress;
+                }
+            }
+        }
+        return remoteAddress;
+    }
+
+    private static boolean isLoopback(String address) {
+        return "127.0.0.1".equals(address)
+                || "0:0:0:0:0:0:0:1".equals(address)
+                || "::1".equals(address);
     }
 
     @GetMapping("/me")

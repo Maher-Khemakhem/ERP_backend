@@ -2,6 +2,12 @@ spring:
   application:
     name: ERP
 
+  # Load the ignored local .env file when developing from the ERP directory.
+  # Production deployments should inject these values through the environment
+  # or a secret manager; the file remains optional.
+  config:
+    import: optional:file:./.env[.properties]
+
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/supermarket_erp_saas}
     username: ${DB_USERNAME:postgres}
@@ -38,6 +44,8 @@ management:
         include: health, info, modulith
 
 server:
+  # Caddy is the public HTTPS boundary; do not expose Spring Boot directly.
+  address: 127.0.0.1
   port: 8080
 
 app:
@@ -49,6 +57,14 @@ app:
     jwt-issuer: ${JWT_ISSUER:supermarket-erp}
     jwt-audience: ${JWT_AUDIENCE:supermarket-web}
     jwt-expiration-seconds: ${JWT_EXPIRATION_SECONDS:900}
+    login-rate-limit:
+      # Per-instance login throttling. Use a shared edge limiter as well when
+      # running more than one backend instance.
+      ip-capacity: ${LOGIN_RATE_LIMIT_IP_CAPACITY:30}
+      ip-window-seconds: ${LOGIN_RATE_LIMIT_IP_WINDOW_SECONDS:60}
+      username-capacity: ${LOGIN_RATE_LIMIT_USERNAME_CAPACITY:10}
+      username-window-seconds: ${LOGIN_RATE_LIMIT_USERNAME_WINDOW_SECONDS:60}
+      max-buckets: ${LOGIN_RATE_LIMIT_MAX_BUCKETS:10000}
 
 logging:
   level:
