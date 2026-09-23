@@ -10,8 +10,10 @@ import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @Configuration(proxyBeanMethods = false)
+@ConditionalOnProperty(name = "app.flyway.enabled", havingValue = "true", matchIfMissing = true)
 public class FlywayConfig {
 
     @Bean(name = "flyway", initMethod = "migrate")
