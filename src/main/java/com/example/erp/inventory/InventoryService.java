@@ -51,6 +51,30 @@ public class InventoryService {
         return cost;
     }
 
+    /** Reserves stock for an online order without making it unavailable to that order twice. */
+    @Transactional
+    public void reserve(UUID productId, Quantity quantity) {
+        validateProductForSale(productId, quantity.unitType());
+        StockLevel stock = stockRepository.findByProductId(productId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Aucun stock trouvÃ© pour le produit : " + productId));
+        stock.reserve(quantity, LocalDate.now());
+        stockRepository.save(stock);
+    }
+
+    /** Commits a quantity previously reserved during online checkout. */
+    @Transactional
+    public Money sellReserved(UUID productId, Quantity quantity) {
+        validateProductForSale(productId, quantity.unitType());
+        StockLevel stock = stockRepository.findByProductId(productId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Aucun stock trouvÃ© pour le produit : " + productId));
+        Money cost = stock.sellReserved(quantity, LocalDate.now(), reorderPointFor(productId));
+        stockRepository.save(stock);
+        publishAndClear(stock);
+        return cost;
+    }
+
     /** Validates the catalog contract used by POS before pricing or selling. */
     @Transactional(readOnly = true)
     public void validateProductForSale(UUID productId, Quantity.UnitType unitType) {

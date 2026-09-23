@@ -64,6 +64,14 @@ class LotEntry {
         return requested.subtract(deductible);
     }
 
+    /** Deducts quantity that was already reserved for an online order. */
+    Quantity deductReservedUpTo(Quantity requested) {
+        Quantity deductible = reserved.isGreaterThan(requested) ? requested : reserved;
+        onHand = onHand.subtract(deductible);
+        reserved = reserved.subtract(deductible);
+        return requested.subtract(deductible);
+    }
+
     Money costFor(Quantity quantity) {
         return lot.getUnitCost().multiply(quantity.value());
     }

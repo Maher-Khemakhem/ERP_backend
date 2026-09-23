@@ -30,6 +30,22 @@ class FinanceService {
     }
 
     @Transactional
+    void postSale(String eventKey, String description, UUID referenceId, String paymentMethod,
+                  Money netAmount, Money vatAmount, Money grossAmount, Money costOfGoodsSold) {
+        AccountCode paymentAccount = "CASH".equalsIgnoreCase(paymentMethod)
+                ? AccountCode.CASH_ON_HAND : AccountCode.CARD_CLEARING;
+        List<JournalLine> lines = new ArrayList<>();
+        lines.add(JournalLine.debit(paymentAccount, grossAmount, "Customer payment"));
+        lines.add(JournalLine.credit(AccountCode.SALES_REVENUE, netAmount, "Retail sale"));
+        if (!vatAmount.isZero()) lines.add(JournalLine.credit(AccountCode.OUTPUT_VAT, vatAmount, "Output VAT"));
+        if (!costOfGoodsSold.isZero()) {
+            lines.add(JournalLine.debit(AccountCode.COST_OF_GOODS_SOLD, costOfGoodsSold, "Cost of goods sold"));
+            lines.add(JournalLine.credit(AccountCode.INVENTORY, costOfGoodsSold, "Inventory consumed"));
+        }
+        postIfAbsent(eventKey, description, referenceId, lines);
+    }
+
+    @Transactional
     SupplierInvoice createInvoice(UUID supplierId, UUID purchaseOrderId, String invoiceNumber,
                                   Money subtotal, BigDecimal vatRate, LocalDate issueDate, LocalDate dueDate) {
         if (vatRate.signum() < 0 || vatRate.compareTo(BigDecimal.valueOf(100)) > 0) {

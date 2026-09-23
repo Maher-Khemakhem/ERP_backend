@@ -13,7 +13,7 @@ The API owns authentication, inventory, pricing, point of sale, procurement, and
 | Web/API | Spring MVC, Jakarta Validation |
 | Persistence | Spring Data JPA, Hibernate |
 | Database | PostgreSQL 14 or newer |
-| Migrations | Flyway (V1 through V13) |
+| Migrations | Flyway (V1 through V15) |
 | Module boundaries/events | Spring Modulith 2.1, JDBC event publication |
 | Security | Spring Security, HS256 JWT resource server, BCrypt passwords |
 | API documentation | Springdoc OpenAPI / Swagger UI |
@@ -30,12 +30,14 @@ All application code is under `src/main/java/com/example/erp/`.
 | `pos` | Tills, cash sessions, transactions, payments, voids, and phone-scanner pairing |
 | `procurement` | Suppliers, purchase orders, goods receiving, and low-stock alerts |
 | `finance` | Double-entry journals, ledger views, P&L, supplier invoices/payments, and card settlement |
+| `ecommerce` | Customer catalog, authentication, server-side carts, online orders, checkout, and mock payment confirmation |
 | `shared` | Cross-module value objects and contracts such as `Money`, `Quantity`, and `DomainEvent` |
 
 Cross-module interaction uses public services or events. The important event flows are:
 
 ```text
 TransactionCompleted       -> finance records revenue, VAT, payment, and COGS
+OnlineOrderConfirmed       -> finance records online revenue, VAT, payment, and COGS
 GoodsReceived              -> finance records inventory and GRNI
 CashSessionClosed          -> finance records cash deposits and over/short variance
 LowStockThresholdReached   -> procurement creates a low-stock alert
@@ -201,6 +203,32 @@ First-admin and login request examples:
 Product creation accepts `sku`, `name`, optional `familyId` and `imageUrl`, `unitType`, `perishable`, `reorderPoint`, and `vatRate`. VAT defaults to 19 when omitted. Uploaded images are limited to 5 MB and are stored outside the database.
 
 Pricing first calculates the base unit/weight price and then applies the first active promotion. POS line VAT is calculated from the product's catalog VAT rate, so a basket can contain products with different rates.
+
+### E-commerce storefront
+
+Customer-facing routes are grouped under `/api/store`. Catalog routes are
+public; cart, checkout, and order routes require a JWT with the `CUSTOMER`
+role.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/store/auth/register` | Register a customer account |
+| `POST` | `/api/store/auth/login` | Authenticate a customer |
+| `GET` | `/api/store/products` | List/search online products and availability |
+| `GET` | `/api/store/products/{productId}` | Read one online product |
+| `GET` | `/api/store/cart` | Read the authenticated customer's cart |
+| `POST` | `/api/store/cart/items` | Add a product quantity to the cart |
+| `PUT` | `/api/store/cart/items/{productId}` | Replace a cart item quantity |
+| `DELETE` | `/api/store/cart/items/{productId}` | Remove a cart item |
+| `POST` | `/api/store/checkout` | Create a pending-payment order and reserve stock |
+| `POST` | `/api/store/checkout/{orderId}/confirm-payment` | Confirm the mock card payment and commit the sale |
+| `GET` | `/api/store/orders` | List the authenticated customer's orders |
+| `GET` | `/api/store/orders/{orderId}` | Read one owned order |
+
+Cart changes do not reserve stock. Checkout recalculates prices and reserves
+stock in the same transaction that creates the `PENDING_PAYMENT` order.
+Payment confirmation commits the reserved stock and publishes
+`OnlineOrderConfirmed` for Finance.
 
 ### Point of sale
 
