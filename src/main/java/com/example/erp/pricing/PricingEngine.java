@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -53,6 +54,20 @@ public class PricingEngine {
         Money lineTotal = strategy.calculateLinePrice(quantity, basePrice);
 
         return applyActivePromotion(productId, lineTotal);
+    }
+
+    /** Calculates the current selling price for one EACH or one kilogram. */
+    public Money calculateUnitPrice(UUID productId, Quantity.UnitType unitType) {
+        Quantity one = unitType == Quantity.UnitType.EACH
+                ? Quantity.each(1)
+                : new Quantity(java.math.BigDecimal.ONE, Quantity.UnitType.WEIGHT);
+        return calculateLinePrice(productId, one);
+    }
+
+    /** Returns a current unit price without turning an unpublished price into an API error. */
+    public Optional<Money> findUnitPrice(UUID productId, Quantity.UnitType unitType) {
+        return priceRepository.findByProductId(productId)
+                .map(price -> calculateUnitPrice(productId, unitType));
     }
 
     private PricingStrategy strategyFor(Quantity.UnitType unitType) {

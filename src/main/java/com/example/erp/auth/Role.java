@@ -5,5 +5,6 @@ public enum Role {
     MANAGER,
     CASHIER,
     INVENTORY_MANAGER,
-    ACCOUNTANT
+    ACCOUNTANT,
+    CUSTOMER
 }

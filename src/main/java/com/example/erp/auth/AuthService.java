@@ -65,6 +65,33 @@ public class AuthService {
     }
 
     @Transactional
+    public AuthController.AuthResponse registerCustomer(String username, String displayName, String password) {
+        User user = createUser(username, displayName, password, Set.of(Role.CUSTOMER));
+        return issueToken(user, Set.of(Role.CUSTOMER));
+    }
+
+    @Transactional(readOnly = true)
+    public AuthController.AuthResponse loginCustomer(String username, String password) {
+        User user = userRepository.findByUsernameIgnoreCase(username == null ? "" : username.trim())
+                .orElseThrow(InvalidCredentialsException::new);
+        if (!user.isEnabled()
+                || !user.getRoles().contains(Role.CUSTOMER)
+                || !passwordEncoder.matches(password == null ? "" : password, user.getPasswordHash())) {
+            throw new InvalidCredentialsException();
+        }
+        return issueToken(user, user.getRoles());
+    }
+
+    @Transactional(readOnly = true)
+    public UUID customerIdForUsername(String username) {
+        User user = findByUsername(username);
+        if (!user.isEnabled() || !user.getRoles().contains(Role.CUSTOMER)) {
+            throw new org.springframework.security.access.AccessDeniedException("Customer account required");
+        }
+        return user.getId();
+    }
+
+    @Transactional
     public User createManagedUser(String username, String displayName, String password, Set<Role> roles) {
         return createUser(username, displayName, password, roles);
     }

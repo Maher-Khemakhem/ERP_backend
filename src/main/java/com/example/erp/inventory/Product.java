@@ -38,6 +38,9 @@ public class Product {
     @Column(name = "vat_rate", precision = 5, scale = 2)
     private BigDecimal vatRate;
 
+    @Column(name = "online_visible", nullable = false)
+    private boolean onlineVisible;
+
     protected Product() {
         // requis par JPA/Hibernate
     }
@@ -54,6 +57,7 @@ public class Product {
         this.perishable = perishable;
         this.reorderPoint = reorderPoint;
         this.vatRate = requireVatRate(vatRate);
+        this.onlineVisible = true;
     }
 
     public static Product create(String sku, String name, Quantity.UnitType unitType,
@@ -128,6 +132,10 @@ public class Product {
 
     public BigDecimal getVatRate() {
         return vatRate == null ? BigDecimal.valueOf(19) : vatRate;
+    }
+
+    public boolean isOnlineVisible() {
+        return onlineVisible;
     }
 
     @Override

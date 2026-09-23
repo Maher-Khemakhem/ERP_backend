@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * general API limiter; business traffic should not share the login quota.
  */
 @Component
-class LoginRateLimiter {
+public class LoginRateLimiter {
 
     private final int ipCapacity;
     private final long ipWindowNanos;
@@ -39,7 +39,7 @@ class LoginRateLimiter {
         this.maxBuckets = requirePositive(maxBuckets, "max-buckets");
     }
 
-    void check(String clientIp, String username) {
+    public void check(String clientIp, String username) {
         String normalizedIp = normalize(clientIp, "unknown");
         String normalizedUsername = normalize(username, "unknown");
 

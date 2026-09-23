@@ -92,6 +92,8 @@ class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/setup-status").permitAll()
+                        .requestMatchers("/api/store/auth/login", "/api/store/auth/register").permitAll()
+                        .requestMatchers("/api/store/products", "/api/store/products/**").permitAll()
                         .requestMatchers("/uploads/products/**").permitAll()
                         // The pairing token is the authentication mechanism for the phone scanner.
                         .requestMatchers("/api/pos/scanner-sessions/**").permitAll()
@@ -115,6 +117,8 @@ class SecurityConfig {
                         .hasAnyRole("ADMIN", "MANAGER", "INVENTORY_MANAGER")
                         .requestMatchers("/api/finance/**")
                         .hasAnyRole("ADMIN", "MANAGER", "ACCOUNTANT")
+                        .requestMatchers("/api/store/**")
+                        .hasRole("CUSTOMER")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
         return http.build();
