@@ -4,11 +4,14 @@ import com.example.erp.auth.AuthService;
 import com.example.erp.inventory.InventoryService;
 import com.example.erp.shared.Money;
 import com.example.erp.shared.Quantity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,19 +24,25 @@ public class StorefrontOrderService {
     private final StorefrontCatalogService catalogService;
     private final InventoryService inventoryService;
     private final ApplicationEventPublisher events;
+    private final Duration paymentTimeout;
 
     StorefrontOrderService(AuthService authService,
                            CartRepository cartRepository,
                            OnlineOrderRepository orderRepository,
                            StorefrontCatalogService catalogService,
                            InventoryService inventoryService,
-                           ApplicationEventPublisher events) {
+                           ApplicationEventPublisher events,
+                           @Value("${app.ecommerce.payment-timeout-minutes:15}") long paymentTimeoutMinutes) {
         this.authService = authService;
         this.cartRepository = cartRepository;
         this.orderRepository = orderRepository;
         this.catalogService = catalogService;
         this.inventoryService = inventoryService;
         this.events = events;
+        if (paymentTimeoutMinutes < 1) {
+            throw new IllegalArgumentException("E-commerce payment timeout must be at least one minute");
+        }
+        this.paymentTimeout = Duration.ofMinutes(paymentTimeoutMinutes);
     }
 
     @Transactional
@@ -105,7 +114,8 @@ public class StorefrontOrderService {
                 quotes.stream().map(OnlineOrderLine::from).toList(),
                 net,
                 vat,
-                total);
+                total,
+                Instant.now().plus(paymentTimeout));
         OnlineOrder saved = orderRepository.save(order);
         cart.clear();
         cartRepository.save(cart);
@@ -120,6 +130,15 @@ public class StorefrontOrderService {
 
         if (order.getStatus() == OnlineOrderStatus.CONFIRMED) {
             return order;
+        }
+
+        Instant now = Instant.now();
+        if (order.expireIfDue(now)) {
+            releaseReservedStock(order);
+            return orderRepository.save(order);
+        }
+        if (order.getStatus() != OnlineOrderStatus.PENDING_PAYMENT) {
+            throw new IllegalStateException("Only unpaid pending orders can be paid");
         }
 
         Money costOfGoodsSold = Money.zero();
@@ -146,6 +165,56 @@ public class StorefrontOrderService {
                 .orElseThrow(() -> new IllegalArgumentException("Online order not found: " + orderId));
     }
 
+    @Transactional(readOnly = true)
+    public List<OnlineOrder> listAllOrders() {
+        return orderRepository.findAllByOrderByCreatedAtDesc();
+    }
+
+    @Transactional(readOnly = true)
+    public OnlineOrder getOrderForStaff(UUID orderId) {
+        return orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Online order not found: " + orderId));
+    }
+
+    @Transactional
+    public OnlineOrder cancelPendingOrder(String username, UUID orderId) {
+        UUID customerId = customerId(username);
+        OnlineOrder order = orderRepository.findByIdAndCustomerId(orderId, customerId)
+                .orElseThrow(() -> new IllegalArgumentException("Online order not found: " + orderId));
+        return cancelPendingOrder(order);
+    }
+
+    @Transactional
+    public OnlineOrder cancelPendingOrderForStaff(UUID orderId) {
+        OnlineOrder order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Online order not found: " + orderId));
+        return cancelPendingOrder(order);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UUID> findDueOrderIds(Instant deadline) {
+        return orderRepository.findDueOrderIds(OnlineOrderStatus.PENDING_PAYMENT, deadline);
+    }
+
+    @Transactional
+    public boolean expirePendingOrder(UUID orderId) {
+        OnlineOrder order = orderRepository.findById(orderId).orElse(null);
+        if (order == null || !order.expireIfDue(Instant.now())) {
+            return false;
+        }
+        releaseReservedStock(order);
+        orderRepository.save(order);
+        return true;
+    }
+
+    @Transactional
+    public OnlineOrder advanceFulfillment(UUID orderId, OnlineOrderStatus nextStatus) {
+        OnlineOrder order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Online order not found: " + orderId));
+        order.advanceFulfillment(nextStatus);
+        return orderRepository.save(order);
+    }
+
     private CartSnapshot cartSnapshot(Cart cart) {
         List<CartItemSnapshot> items = cart.getItems().stream().map(item -> {
             StorefrontCatalogService.LineQuote quote = catalogService.quote(item.getProductId(), item.getQuantity())
@@ -168,6 +237,21 @@ public class StorefrontOrderService {
 
     private UUID customerId(String username) {
         return authService.customerIdForUsername(username);
+    }
+
+    private OnlineOrder cancelPendingOrder(OnlineOrder order) {
+        Instant now = Instant.now();
+        if (order.expireIfDue(now)) {
+            releaseReservedStock(order);
+        } else if (order.cancelPendingPayment(now)) {
+            releaseReservedStock(order);
+        }
+        return orderRepository.save(order);
+    }
+
+    private void releaseReservedStock(OnlineOrder order) {
+        order.getLines().forEach(line ->
+                inventoryService.releaseReservation(line.getProductId(), line.getQuantity()));
     }
 
     private Cart requireCart(UUID customerId) {

@@ -123,6 +123,16 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
 
+    @Transactional(readOnly = true)
+    public UserSummary userSummary(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        return new UserSummary(user.getUsername(), user.getDisplayName());
+    }
+
+    public record UserSummary(String username, String displayName) {
+    }
+
     private User createUser(String username, String displayName, String password, Set<Role> roles) {
         String normalizedUsername = username == null ? "" : username.trim().toLowerCase();
         if (userRepository.existsByUsernameIgnoreCase(normalizedUsername)) {

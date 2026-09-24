@@ -94,6 +94,8 @@ class SecurityConfig {
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/setup-status").permitAll()
                         .requestMatchers("/api/store/auth/login", "/api/store/auth/register").permitAll()
                         .requestMatchers("/api/store/products", "/api/store/products/**").permitAll()
+                        .requestMatchers("/api/online-orders", "/api/online-orders/**")
+                        .hasAnyRole("ADMIN", "MANAGER", "CASHIER")
                         .requestMatchers("/uploads/products/**").permitAll()
                         // The pairing token is the authentication mechanism for the phone scanner.
                         .requestMatchers("/api/pos/scanner-sessions/**").permitAll()

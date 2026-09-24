@@ -59,6 +59,15 @@ public class OnlineOrder {
     @Column(name = "confirmed_at")
     private Instant confirmedAt;
 
+    @Column(name = "expires_at", nullable = false)
+    private Instant expiresAt;
+
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
+    @Column(name = "expired_at")
+    private Instant expiredAt;
+
     @Version
     private long version;
 
@@ -70,7 +79,7 @@ public class OnlineOrder {
     }
 
     private OnlineOrder(UUID customerId, List<OnlineOrderLine> lines,
-                        Money netAmount, Money vatAmount, Money totalAmount) {
+                        Money netAmount, Money vatAmount, Money totalAmount, Instant expiresAt) {
         this.id = UUID.randomUUID();
         this.orderNumber = "ONL-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase();
         this.customerId = Objects.requireNonNull(customerId);
@@ -79,6 +88,7 @@ public class OnlineOrder {
         this.vatAmount = Objects.requireNonNull(vatAmount);
         this.totalAmount = Objects.requireNonNull(totalAmount);
         this.createdAt = Instant.now();
+        this.expiresAt = Objects.requireNonNull(expiresAt);
         this.lines.addAll(lines);
     }
 
@@ -87,7 +97,17 @@ public class OnlineOrder {
         if (lines == null || lines.isEmpty()) {
             throw new IllegalArgumentException("Cannot create an empty online order");
         }
-        return new OnlineOrder(customerId, lines, netAmount, vatAmount, totalAmount);
+        return new OnlineOrder(customerId, lines, netAmount, vatAmount, totalAmount,
+                Instant.now().plusSeconds(15 * 60L));
+    }
+
+    static OnlineOrder create(UUID customerId, List<OnlineOrderLine> lines,
+                              Money netAmount, Money vatAmount, Money totalAmount,
+                              Instant expiresAt) {
+        if (lines == null || lines.isEmpty()) {
+            throw new IllegalArgumentException("Cannot create an empty online order");
+        }
+        return new OnlineOrder(customerId, lines, netAmount, vatAmount, totalAmount, expiresAt);
     }
 
     public void confirmPayment(String paymentReference) {
@@ -102,6 +122,45 @@ public class OnlineOrder {
         this.status = OnlineOrderStatus.CONFIRMED;
     }
 
+    public boolean cancelPendingPayment(Instant now) {
+        if (status == OnlineOrderStatus.CANCELLED || status == OnlineOrderStatus.EXPIRED) {
+            return false;
+        }
+        if (status != OnlineOrderStatus.PENDING_PAYMENT) {
+            throw new IllegalStateException("Only unpaid pending orders can be cancelled");
+        }
+        this.status = OnlineOrderStatus.CANCELLED;
+        this.cancelledAt = Objects.requireNonNull(now);
+        return true;
+    }
+
+    public boolean expireIfDue(Instant now) {
+        if (status != OnlineOrderStatus.PENDING_PAYMENT || now.isBefore(expiresAt)) {
+            return false;
+        }
+        this.status = OnlineOrderStatus.EXPIRED;
+        this.expiredAt = now;
+        return true;
+    }
+
+    public void advanceFulfillment(OnlineOrderStatus nextStatus) {
+        Objects.requireNonNull(nextStatus, "nextStatus");
+        if (status == nextStatus) {
+            return;
+        }
+        boolean allowed = switch (status) {
+            case CONFIRMED -> nextStatus == OnlineOrderStatus.PREPARING;
+            case PREPARING -> nextStatus == OnlineOrderStatus.READY;
+            case READY -> nextStatus == OnlineOrderStatus.COMPLETED;
+            default -> false;
+        };
+        if (!allowed) {
+            throw new IllegalStateException(
+                    "Online order cannot move from " + status + " to " + nextStatus);
+        }
+        this.status = nextStatus;
+    }
+
     public UUID getId() { return id; }
     public String getOrderNumber() { return orderNumber; }
     public UUID getCustomerId() { return customerId; }
@@ -112,5 +171,8 @@ public class OnlineOrder {
     public String getPaymentReference() { return paymentReference; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getConfirmedAt() { return confirmedAt; }
+    public Instant getExpiresAt() { return expiresAt; }
+    public Instant getCancelledAt() { return cancelledAt; }
+    public Instant getExpiredAt() { return expiredAt; }
     public List<OnlineOrderLine> getLines() { return List.copyOf(lines); }
 }

@@ -72,6 +72,13 @@ class LotEntry {
         return requested.subtract(deductible);
     }
 
+    /** Releases quantity held for an unpaid online order without changing on-hand stock. */
+    Quantity releaseReservationUpTo(Quantity requested) {
+        Quantity released = reserved.isGreaterThan(requested) ? requested : reserved;
+        reserved = reserved.subtract(released);
+        return requested.subtract(released);
+    }
+
     Money costFor(Quantity quantity) {
         return lot.getUnitCost().multiply(quantity.value());
     }

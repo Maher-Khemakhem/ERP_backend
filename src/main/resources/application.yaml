@@ -49,6 +49,9 @@ server:
   port: 8080
 
 app:
+  ecommerce:
+    payment-timeout-minutes: ${ECOMMERCE_PAYMENT_TIMEOUT_MINUTES:15}
+    expiry-scan-interval-ms: ${ECOMMERCE_EXPIRY_SCAN_INTERVAL_MS:60000}
   upload-dir: ${APP_UPLOAD_DIR:uploads/products}
   security:
     # Required. Never provide a default secret here.

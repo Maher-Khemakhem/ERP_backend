@@ -13,7 +13,7 @@ The API owns authentication, inventory, pricing, point of sale, procurement, and
 | Web/API | Spring MVC, Jakarta Validation |
 | Persistence | Spring Data JPA, Hibernate |
 | Database | PostgreSQL 14 or newer |
-| Migrations | Flyway (V1 through V15) |
+| Migrations | Flyway (V1 through V18) |
 | Module boundaries/events | Spring Modulith 2.1, JDBC event publication |
 | Security | Spring Security, HS256 JWT resource server, BCrypt passwords |
 | API documentation | Springdoc OpenAPI / Swagger UI |
@@ -224,11 +224,27 @@ role.
 | `POST` | `/api/store/checkout/{orderId}/confirm-payment` | Confirm the mock card payment and commit the sale |
 | `GET` | `/api/store/orders` | List the authenticated customer's orders |
 | `GET` | `/api/store/orders/{orderId}` | Read one owned order |
+| `POST` | `/api/store/orders/{orderId}/cancel` | Cancel an unpaid order and release its reservation |
 
 Cart changes do not reserve stock. Checkout recalculates prices and reserves
 stock in the same transaction that creates the `PENDING_PAYMENT` order.
 Payment confirmation commits the reserved stock and publishes
-`OnlineOrderConfirmed` for Finance.
+`OnlineOrderConfirmed` for Finance. Unpaid orders expire after the configured
+timeout (`ECOMMERCE_PAYMENT_TIMEOUT_MINUTES`, 15 minutes by default); expiry and
+cancellation return reserved quantities to available stock.
+
+Staff order-management routes are available separately under `/api/online-orders`
+and require an `ADMIN`, `MANAGER`, or `CASHIER` token. Staff can list and inspect
+orders, then advance paid orders through `CONFIRMED -> PREPARING -> READY ->
+COMPLETED`. Staff may cancel only unpaid orders; cancellation of a paid order
+is rejected because refunds and restocking are not implemented.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/online-orders` | List online orders for staff |
+| `GET` | `/api/online-orders/{orderId}` | Read an order with its lines and totals |
+| `PATCH` | `/api/online-orders/{orderId}/status` | Advance fulfilment status using `{ "status": "PREPARING" }` |
+| `POST` | `/api/online-orders/{orderId}/cancel` | Cancel an unpaid order and release its reservation |
 
 ### Point of sale
 

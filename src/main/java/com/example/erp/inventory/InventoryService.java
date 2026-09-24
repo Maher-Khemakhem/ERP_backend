@@ -62,6 +62,17 @@ public class InventoryService {
         stockRepository.save(stock);
     }
 
+    /** Releases stock held by an unpaid online order back to general availability. */
+    @Transactional
+    public void releaseReservation(UUID productId, Quantity quantity) {
+        validateProductForSale(productId, quantity.unitType());
+        StockLevel stock = stockRepository.findByProductId(productId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Aucun stock trouvé pour le produit : " + productId));
+        stock.releaseReservation(quantity);
+        stockRepository.save(stock);
+    }
+
     /** Commits a quantity previously reserved during online checkout. */
     @Transactional
     public Money sellReserved(UUID productId, Quantity quantity) {

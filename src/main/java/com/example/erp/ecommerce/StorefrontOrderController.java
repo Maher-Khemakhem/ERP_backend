@@ -76,7 +76,8 @@ public class StorefrontOrderController {
 
     public record OrderView(UUID id, String orderNumber, String status, String netAmount,
                             String vatAmount, String totalAmount, String paymentReference,
-                            String createdAt, String confirmedAt, List<OrderLineView> lines) {
+                            String createdAt, String confirmedAt, String expiresAt,
+                            String cancelledAt, String expiredAt, List<OrderLineView> lines) {
         static OrderView from(OnlineOrder order) {
             return new OrderView(
                     order.getId(),
@@ -88,6 +89,9 @@ public class StorefrontOrderController {
                     order.getPaymentReference(),
                     order.getCreatedAt().toString(),
                     order.getConfirmedAt() == null ? null : order.getConfirmedAt().toString(),
+                    order.getExpiresAt().toString(),
+                    order.getCancelledAt() == null ? null : order.getCancelledAt().toString(),
+                    order.getExpiredAt() == null ? null : order.getExpiredAt().toString(),
                     order.getLines().stream().map(OrderLineView::from).toList());
         }
     }
@@ -139,6 +143,11 @@ public class StorefrontOrderController {
     @GetMapping("/orders/{orderId}")
     public OrderView order(Authentication authentication, @PathVariable UUID orderId) {
         return OrderView.from(orderService.getOrder(authentication.getName(), orderId));
+    }
+
+    @PostMapping("/orders/{orderId}/cancel")
+    public OrderView cancelOrder(Authentication authentication, @PathVariable UUID orderId) {
+        return OrderView.from(orderService.cancelPendingOrder(authentication.getName(), orderId));
     }
 
     private static Quantity parseQuantity(BigDecimal value, String unitType) {

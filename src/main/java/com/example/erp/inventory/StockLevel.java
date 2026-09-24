@@ -109,6 +109,26 @@ public class StockLevel {
         }
     }
 
+    /** Releases a prior reservation while leaving on-hand stock unchanged. */
+    public void releaseReservation(Quantity quantity) {
+        Quantity reserved = totalReserved(quantity.unitType());
+        if (!reserved.isGreaterThanOrEqualTo(quantity)) {
+            throw new IllegalStateException(
+                    "Reserved stock is insufficient for release of " + quantity + " for product " + productId);
+        }
+
+        Quantity remaining = quantity;
+        for (LotEntry entry : lots.stream()
+                .filter(e -> !e.reserved().isZero())
+                .toList()) {
+            if (remaining.isZero()) break;
+            remaining = entry.releaseReservationUpTo(remaining);
+        }
+        if (!remaining.isZero()) {
+            throw new IllegalStateException("Could not release the full reservation for product " + productId);
+        }
+    }
+
     /** Sortie de stock pour cause de péremption ou casse — jamais une vente normale. */
     public void writeOff(UUID lotId, Quantity quantity, String reason, int reorderPoint) {
         LotEntry entry = findLotEntry(lotId);
