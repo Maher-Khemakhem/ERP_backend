@@ -35,18 +35,24 @@ class StockLevelController {
             boolean perishable,
             int reorderPoint,
             BigDecimal totalQuantity,
+            BigDecimal reservedQuantity,
+            BigDecimal availableQuantity,
             int lotCount,
             String earliestExpiryDate,
             String status
     ) {}
 
-    public record StockLevelView(UUID productId, String productName, BigDecimal totalQuantity, List<LotView> lots) {}
+    public record StockLevelView(UUID productId, String productName, BigDecimal totalQuantity,
+                                 BigDecimal reservedQuantity, BigDecimal availableQuantity,
+                                 List<LotView> lots) {}
 
     public record LotView(
             String id,
             String lotNumber,
             String productId,
             BigDecimal quantity,
+            BigDecimal reservedQuantity,
+            BigDecimal availableQuantity,
             String expiryDate,
             String receivedAt,
             BigDecimal unitCost,
@@ -62,6 +68,8 @@ class StockLevelController {
         List<StockSummaryView> summaries = products.stream().map(p -> {
             StockLevel stock = stockMap.get(p.getId());
             BigDecimal totalQuantity = BigDecimal.ZERO;
+            BigDecimal reservedQuantity = BigDecimal.ZERO;
+            BigDecimal availableQuantity = BigDecimal.ZERO;
             int lotCount = 0;
             LocalDate earliestExpiry = null;
 
@@ -77,13 +85,15 @@ class StockLevelController {
                             }
                         }
                     }
+                    reservedQuantity = reservedQuantity.add(entry.reserved().value());
+                    availableQuantity = availableQuantity.add(entry.available().value());
                 }
             }
 
             String status;
-            if (totalQuantity.compareTo(BigDecimal.ZERO) <= 0) {
+            if (availableQuantity.compareTo(BigDecimal.ZERO) <= 0) {
                 status = "OUT_OF_STOCK";
-            } else if (totalQuantity.compareTo(BigDecimal.valueOf(p.getReorderPoint())) <= 0) {
+            } else if (availableQuantity.compareTo(BigDecimal.valueOf(p.getReorderPoint())) <= 0) {
                 status = "LOW_STOCK";
             } else {
                 status = "IN_STOCK";
@@ -102,6 +112,8 @@ class StockLevelController {
                     p.isPerishable(),
                     p.getReorderPoint(),
                     totalQuantity,
+                    reservedQuantity,
+                    availableQuantity,
                     lotCount,
                     earliestExpiry != null ? earliestExpiry.toString() : null,
                     status
@@ -122,12 +134,19 @@ class StockLevelController {
         Optional<StockLevel> stockOpt = stockLevelRepository.findByProductId(productId);
 
         if (stockOpt.isEmpty()) {
-            return ResponseEntity.ok(new StockLevelView(productId, productName, BigDecimal.ZERO, List.of()));
+            return ResponseEntity.ok(new StockLevelView(
+                    productId, productName, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, List.of()));
         }
 
         StockLevel stock = stockOpt.get();
         BigDecimal totalQuantity = stock.getLots().stream()
                 .map(e -> e.onHand().value())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal reservedQuantity = stock.getLots().stream()
+                .map(e -> e.reserved().value())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal availableQuantity = stock.getLots().stream()
+                .map(e -> e.available().value())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         List<LotView> lots = stock.getLots().stream()
@@ -137,6 +156,8 @@ class StockLevelController {
                         e.lot().getLotNumber(),
                         e.lot().getProductId().toString(),
                         e.onHand().value(),
+                        e.reserved().value(),
+                        e.available().value(),
                         e.lot().getExpiryDate() != null ? e.lot().getExpiryDate().toString() : null,
                         e.lot().getReceivedDate() != null ? e.lot().getReceivedDate().atStartOfDay().toString() : null,
                         e.lot().getUnitCost() != null ? e.lot().getUnitCost().amount() : BigDecimal.ZERO,
@@ -144,6 +165,7 @@ class StockLevelController {
                 ))
                 .toList();
 
-        return ResponseEntity.ok(new StockLevelView(productId, productName, totalQuantity, lots));
+        return ResponseEntity.ok(new StockLevelView(
+                productId, productName, totalQuantity, reservedQuantity, availableQuantity, lots));
     }
 }
