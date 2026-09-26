@@ -1,6 +1,9 @@
 package com.example.erp.inventory;
 
 import com.example.erp.auth.AuthService;
+import com.example.erp.ecommerce.OnlineOrder;
+import com.example.erp.ecommerce.OnlineOrderStatus;
+import com.example.erp.ecommerce.StorefrontOrderService;
 import com.example.erp.pos.PosService;
 import com.example.erp.pos.PosTransaction;
 import com.example.erp.pos.PosTransactionRepository;
@@ -8,6 +11,7 @@ import com.example.erp.shared.Money;
 import com.example.erp.shared.Quantity;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -24,7 +28,6 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -97,6 +100,45 @@ class ConcurrentStockDeductionIntegrationTest {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private StorefrontOrderService storefrontOrderService;
+
+    @Test
+    void cancellingUnpaidOnlineOrder_releasesItsStockReservation() throws Exception {
+        lifecycle("prepare checkout with one available unit");
+        StoreFixture fixture = prepareStoreFixture("CANCEL");
+
+        OnlineOrder order = storefrontOrderService.checkout(fixture.customerUsername());
+        assertThat(order.getStatus()).isEqualTo(OnlineOrderStatus.PENDING_PAYMENT);
+        assertStock(fixture.product().getId(), "1", "1", "0");
+        lifecycle("checkout reserved the unit: on-hand=1, reserved=1, available=0");
+
+        OnlineOrder cancelled = storefrontOrderService.cancelPendingOrder(
+                fixture.customerUsername(), order.getId());
+
+        assertThat(cancelled.getStatus()).isEqualTo(OnlineOrderStatus.CANCELLED);
+        assertStock(fixture.product().getId(), "1", "0", "1");
+        lifecycle("cancellation released the reservation: on-hand=1, reserved=0, available=1");
+    }
+
+    @Test
+    void confirmingOnlinePayment_consumesPreviouslyReservedStock() throws Exception {
+        lifecycle("prepare checkout with one available unit");
+        StoreFixture fixture = prepareStoreFixture("PAY");
+
+        OnlineOrder order = storefrontOrderService.checkout(fixture.customerUsername());
+        assertStock(fixture.product().getId(), "1", "1", "0");
+        lifecycle("checkout reserved the unit: on-hand=1, reserved=1, available=0");
+
+        OnlineOrder confirmed = storefrontOrderService.confirmPayment(
+                fixture.customerUsername(), order.getId());
+
+        assertThat(confirmed.getStatus()).isEqualTo(OnlineOrderStatus.CONFIRMED);
+        assertThat(confirmed.getPaymentReference()).startsWith("MOCK-CARD-");
+        assertStock(fixture.product().getId(), "0", "0", "0");
+        lifecycle("payment confirmation consumed the reserved unit: on-hand=0, reserved=0, available=0");
+    }
 
     @Test
     void concurrentCompletionRequests_sellTheLastUnitExactlyOnce() throws Exception {
@@ -235,6 +277,42 @@ class ConcurrentStockDeductionIntegrationTest {
         return transactionId;
     }
 
+    private StoreFixture prepareStoreFixture(String prefix) throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Product product = productRepository.saveAndFlush(
+                Product.create(prefix + "-" + suffix, prefix + " lifecycle product",
+                        Quantity.UnitType.EACH, false, 0));
+        inventoryService.receiveStock(product.getId(), Quantity.each(1), prefix + "-LOT-" + suffix,
+                null, LocalDate.now(), "integration-test", Money.zero());
+
+        String customerUsername = "store-" + prefix.toLowerCase() + "-" + suffix.substring(0, 8);
+        authService.registerCustomer(customerUsername, "Lifecycle test customer", "test-password-123");
+        mockMvc.perform(post("/api/pricing/prices")
+                        .with(user("manager").roles("MANAGER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + product.getId() + "\",\"unitPrice\":1.000}"))
+                .andExpect(status().isOk());
+        storefrontOrderService.addItem(customerUsername, product.getId(), Quantity.each(1));
+        return new StoreFixture(product, customerUsername);
+    }
+
+    private void assertStock(UUID productId, String onHandExpected,
+                             String reservedExpected, String availableExpected) {
+        StockLevel stock = stockLevelRepository.findByProductId(productId).orElseThrow();
+        BigDecimal onHand = stock.getLots().stream()
+                .map(entry -> entry.onHand().value()).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal reserved = stock.getLots().stream()
+                .map(entry -> entry.reserved().value()).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal available = stock.getLots().stream()
+                .map(entry -> entry.available().value()).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(onHand).isEqualByComparingTo(onHandExpected);
+        assertThat(reserved).isEqualByComparingTo(reservedExpected);
+        assertThat(available).isEqualByComparingTo(availableExpected);
+    }
+
+    private record StoreFixture(Product product, String customerUsername) {
+    }
+
     private void synchronizeStockReads(UUID productId) {
         CountDownLatch stockRead = new CountDownLatch(2);
         doAnswer(invocation -> {
@@ -285,5 +363,9 @@ class ConcurrentStockDeductionIntegrationTest {
 
     private void flow(String message) {
         System.out.println("[STOCK-RACE] " + message);
+    }
+
+    private void lifecycle(String message) {
+        System.out.println("[ECOMMERCE-LIFECYCLE] " + message);
     }
 }
