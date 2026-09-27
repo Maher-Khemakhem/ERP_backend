@@ -24,8 +24,36 @@ public class FlywayConfig {
                 .schemas("platform")
                 .defaultSchema("platform")
                 .createSchemas(true)
+                .outOfOrder(needsOutOfOrderCoreBaseline(dataSource))
                 .locations("classpath:db/migration")
                 .load();
+    }
+
+    private boolean needsOutOfOrderCoreBaseline(DataSource dataSource) throws SQLException {
+        try (var connection = dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            try (var result = statement.executeQuery(
+                    "SELECT to_regclass('platform.flyway_schema_history') IS NOT NULL")) {
+                result.next();
+                if (!result.getBoolean(1)) {
+                    return false;
+                }
+            }
+            // Installations that already ran V3 need to apply the newly added
+            // V2.1 baseline once. Normal migration ordering resumes afterward.
+            try (var result = statement.executeQuery("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM platform.flyway_schema_history
+                        WHERE version = '3' AND success
+                    ) AND NOT EXISTS (
+                        SELECT 1 FROM platform.flyway_schema_history
+                        WHERE version = '2.1' AND success
+                    )
+                    """)) {
+                result.next();
+                return result.getBoolean(1);
+            }
+        }
     }
 
     private void createIdentityTables(DataSource dataSource) throws SQLException {

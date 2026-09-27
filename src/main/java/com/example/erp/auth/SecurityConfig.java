@@ -99,6 +99,7 @@ class SecurityConfig {
                         .requestMatchers("/uploads/products/**").permitAll()
                         // The pairing token is the authentication mechanism for the phone scanner.
                         .requestMatchers("/api/pos/scanner-sessions/**").permitAll()
+                        // Shared staff reads must exclude self-registered CUSTOMER accounts.
                         .requestMatchers(HttpMethod.GET,
                                 "/api/inventory/products/**",
                                 "/api/inventory/stock/**",
@@ -108,7 +109,8 @@ class SecurityConfig {
                                 "/api/pos/sessions/**",
                                 "/api/pos/transactions/**",
                                 "/api/procurement/alerts",
-                                "/api/procurement/suppliers/**").authenticated()
+                                "/api/procurement/suppliers/**")
+                        .hasAnyRole("ADMIN", "MANAGER", "CASHIER", "INVENTORY_MANAGER", "ACCOUNTANT")
                         .requestMatchers("/api/inventory/**")
                         .hasAnyRole("ADMIN", "MANAGER", "INVENTORY_MANAGER")
                         .requestMatchers("/api/pricing/**")

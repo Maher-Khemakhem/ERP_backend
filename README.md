@@ -13,7 +13,7 @@ The API owns authentication, inventory, pricing, point of sale, procurement, and
 | Web/API | Spring MVC, Jakarta Validation |
 | Persistence | Spring Data JPA, Hibernate |
 | Database | PostgreSQL 14 or newer |
-| Migrations | Flyway (V1 through V18) |
+| Migrations | Flyway (V1 through V18, including V2.1) |
 | Module boundaries/events | Spring Modulith 2.1, JDBC event publication |
 | Security | Spring Security, HS256 JWT resource server, BCrypt passwords |
 | API documentation | Springdoc OpenAPI / Swagger UI |
@@ -305,13 +305,15 @@ Flyway applies all scripts in `src/main/resources/db/migration/` in order:
 | Versions | Scope |
 | --- | --- |
 | V1-V2 | Platform tables and business schemas |
+| V2.1 | Core business tables required by V3 and later migrations |
 | V3-V6 | Historical tenancy experiment and its removal for the single-store model |
 | V7-V8 | Product catalog metadata and normalized product families |
 | V9-V11 | Spring Modulith event-publication schema fixes |
 | V12 | Supplier address |
 | V13 | Performance indexes |
+| V14-V18 | Storefront catalog, orders, customer role, and unpaid-order expiry |
 
-Do not edit an applied migration. Add a new versioned migration for every schema change.
+Do not edit an applied migration. Add a new versioned migration for every schema change. Existing databases that reached V3 or later before V2.1 was added apply V2.1 once out of order; the migration only creates missing tables.
 
 ## API discovery and operations
 
@@ -330,7 +332,7 @@ For Windows backup, restore, and scheduled jobs, see [`../ops/windows/README.md`
 .\mvnw.cmd test
 ```
 
-The suite expects a configured, reachable PostgreSQL database because `ErpApplicationTests` starts the full application context and runs Flyway. Configure `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, and `JWT_SECRET` before running it. Tests cover application startup, Spring Modulith boundaries, authentication rate limiting, POS transactions and scanner sessions, procurement state changes, and finance journal behavior.
+The full suite uses Testcontainers for fresh-database migration and stock-concurrency tests, so Docker must be running. Test configuration supplies a test-only JWT secret. Tests cover application startup with Flyway and schema validation, Spring Modulith boundaries, authentication rate limiting, POS transactions and scanner sessions, procurement state changes, and finance journal behavior.
 
 When changing the backend:
 
