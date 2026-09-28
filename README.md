@@ -334,6 +334,12 @@ For Windows backup, restore, and scheduled jobs, see [`../ops/windows/README.md`
 
 The full suite uses Testcontainers for fresh-database migration and stock-concurrency tests, so Docker must be running. Test configuration supplies a test-only JWT secret. Tests cover application startup with Flyway and schema validation, Spring Modulith boundaries, authentication rate limiting, POS transactions and scanner sessions, procurement state changes, and finance journal behavior.
 
+## GitHub Actions
+
+`.github/workflows/ci.yml` runs `mvn verify` on pushes, pull requests, and manual runs with Java 21 and Docker support for Testcontainers. Successful push and manual runs attach the tested executable JAR as a `backend-<commit SHA>` artifact for 14 days. Pull requests run the checks without publishing an artifact.
+
+The workflow belongs to the `ERP_backend` repository. The local Docker and Kubernetes deployment files are outside that repository and are not part of this workflow.
+
 When changing the backend:
 
 - Keep module boundaries intact; use public services or events across modules.
