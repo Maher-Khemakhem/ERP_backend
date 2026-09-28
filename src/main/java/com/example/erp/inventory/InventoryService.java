@@ -39,13 +39,48 @@ public class InventoryService {
     public Money sell(UUID productId, Quantity quantity) {
         validateProductForSale(productId, quantity.unitType());
 
-        StockLevel stock = stockRepository.findByProductId(productId)
+        StockLevel stock = stockRepository.findForMutationByProductId(productId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Aucun stock trouvé pour le produit : " + productId));
         int reorderPoint = reorderPointFor(productId);
 
         Money cost = stock.sell(quantity, LocalDate.now(), reorderPoint);
 
+        stockRepository.save(stock);
+        publishAndClear(stock);
+        return cost;
+    }
+
+    /** Reserves stock for an online order without making it unavailable to that order twice. */
+    @Transactional
+    public void reserve(UUID productId, Quantity quantity) {
+        validateProductForSale(productId, quantity.unitType());
+        StockLevel stock = stockRepository.findForMutationByProductId(productId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Aucun stock trouvÃ© pour le produit : " + productId));
+        stock.reserve(quantity, LocalDate.now());
+        stockRepository.save(stock);
+    }
+
+    /** Releases stock held by an unpaid online order back to general availability. */
+    @Transactional
+    public void releaseReservation(UUID productId, Quantity quantity) {
+        validateProductForSale(productId, quantity.unitType());
+        StockLevel stock = stockRepository.findForMutationByProductId(productId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Aucun stock trouvé pour le produit : " + productId));
+        stock.releaseReservation(quantity);
+        stockRepository.save(stock);
+    }
+
+    /** Commits a quantity previously reserved during online checkout. */
+    @Transactional
+    public Money sellReserved(UUID productId, Quantity quantity) {
+        validateProductForSale(productId, quantity.unitType());
+        StockLevel stock = stockRepository.findForMutationByProductId(productId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Aucun stock trouvÃ© pour le produit : " + productId));
+        Money cost = stock.sellReserved(quantity, LocalDate.now(), reorderPointFor(productId));
         stockRepository.save(stock);
         publishAndClear(stock);
         return cost;
@@ -109,7 +144,7 @@ public class InventoryService {
             throw new IllegalArgumentException("Perishable products require an expiry date");
         }
 
-        StockLevel stock = stockRepository.findByProductId(productId)
+        StockLevel stock = stockRepository.findForMutationByProductId(productId)
                 .orElseGet(() -> StockLevel.initialize(productId));
 
         stock.receive(lot, quantity);
@@ -141,7 +176,7 @@ public class InventoryService {
 
     @Transactional
     public void writeOff(UUID productId, UUID lotId, Quantity quantity, String reason) {
-        StockLevel stock = stockRepository.findByProductId(productId)
+        StockLevel stock = stockRepository.findForMutationByProductId(productId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Aucun stock trouvé pour le produit : " + productId));
         int reorderPoint = reorderPointFor(productId);

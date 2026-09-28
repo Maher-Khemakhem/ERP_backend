@@ -7,6 +7,6 @@
  */
 @org.springframework.modulith.ApplicationModule(
         displayName = "Finance",
-        allowedDependencies = {"pos", "procurement", "shared"}
+        allowedDependencies = {"ecommerce", "pos", "procurement", "shared"}
 )
 package com.example.erp.finance;

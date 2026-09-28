@@ -11,8 +11,12 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
@@ -22,6 +26,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 
 @Configuration
 @EnableMethodSecurity
@@ -46,10 +51,19 @@ class SecurityConfig {
     }
 
     @Bean
-    JwtDecoder jwtDecoder(SecretKey jwtSecretKey) {
-        return NimbusJwtDecoder.withSecretKey(jwtSecretKey)
+    JwtDecoder jwtDecoder(SecretKey jwtSecretKey,
+                          @Value("${app.security.jwt-issuer}") String issuer,
+                          @Value("${app.security.jwt-audience}") String audience) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(jwtSecretKey)
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
+
+        OAuth2TokenValidator<Jwt> issuerValidator = JwtValidators.createDefaultWithIssuer(issuer);
+        OAuth2TokenValidator<Jwt> audienceValidator = new org.springframework.security.oauth2.jwt.JwtClaimValidator<Collection<String>>(
+                "aud",
+                claim -> claim != null && claim.contains(audience));
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(issuerValidator, audienceValidator));
+        return decoder;
     }
 
     @Bean
@@ -70,12 +84,22 @@ class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
+                .headers(headers -> headers
+                        .contentTypeOptions(Customizer.withDefaults())
+                        .frameOptions(frame -> frame.deny())
+                        .referrerPolicy(referrer -> referrer.policy(
+                                org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/setup-status").permitAll()
+                        .requestMatchers("/api/store/auth/login", "/api/store/auth/register").permitAll()
+                        .requestMatchers("/api/store/products", "/api/store/products/**").permitAll()
+                        .requestMatchers("/api/online-orders", "/api/online-orders/**")
+                        .hasAnyRole("ADMIN", "MANAGER", "CASHIER")
                         .requestMatchers("/uploads/products/**").permitAll()
                         // The pairing token is the authentication mechanism for the phone scanner.
                         .requestMatchers("/api/pos/scanner-sessions/**").permitAll()
+                        // Shared staff reads must exclude self-registered CUSTOMER accounts.
                         .requestMatchers(HttpMethod.GET,
                                 "/api/inventory/products/**",
                                 "/api/inventory/stock/**",
@@ -85,7 +109,8 @@ class SecurityConfig {
                                 "/api/pos/sessions/**",
                                 "/api/pos/transactions/**",
                                 "/api/procurement/alerts",
-                                "/api/procurement/suppliers/**").authenticated()
+                                "/api/procurement/suppliers/**")
+                        .hasAnyRole("ADMIN", "MANAGER", "CASHIER", "INVENTORY_MANAGER", "ACCOUNTANT")
                         .requestMatchers("/api/inventory/**")
                         .hasAnyRole("ADMIN", "MANAGER", "INVENTORY_MANAGER")
                         .requestMatchers("/api/pricing/**")
@@ -96,6 +121,8 @@ class SecurityConfig {
                         .hasAnyRole("ADMIN", "MANAGER", "INVENTORY_MANAGER")
                         .requestMatchers("/api/finance/**")
                         .hasAnyRole("ADMIN", "MANAGER", "ACCOUNTANT")
+                        .requestMatchers("/api/store/**")
+                        .hasRole("CUSTOMER")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
         return http.build();

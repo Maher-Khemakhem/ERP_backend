@@ -23,15 +23,21 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtEncoder jwtEncoder;
     private final long jwtExpirationSeconds;
+    private final String jwtIssuer;
+    private final String jwtAudience;
 
     AuthService(UserRepository userRepository,
                 PasswordEncoder passwordEncoder,
                 JwtEncoder jwtEncoder,
-                @Value("${app.security.jwt-expiration-seconds:28800}") long jwtExpirationSeconds) {
+                @Value("${app.security.jwt-expiration-seconds:900}") long jwtExpirationSeconds,
+                @Value("${app.security.jwt-issuer}") String jwtIssuer,
+                @Value("${app.security.jwt-audience}") String jwtAudience) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtEncoder = jwtEncoder;
         this.jwtExpirationSeconds = jwtExpirationSeconds;
+        this.jwtIssuer = jwtIssuer;
+        this.jwtAudience = jwtAudience;
     }
 
     @Transactional(readOnly = true)
@@ -56,6 +62,33 @@ public class AuthService {
             throw new InvalidCredentialsException();
         }
         return issueToken(user, user.getRoles());
+    }
+
+    @Transactional
+    public AuthController.AuthResponse registerCustomer(String username, String displayName, String password) {
+        User user = createUser(username, displayName, password, Set.of(Role.CUSTOMER));
+        return issueToken(user, Set.of(Role.CUSTOMER));
+    }
+
+    @Transactional(readOnly = true)
+    public AuthController.AuthResponse loginCustomer(String username, String password) {
+        User user = userRepository.findByUsernameIgnoreCase(username == null ? "" : username.trim())
+                .orElseThrow(InvalidCredentialsException::new);
+        if (!user.isEnabled()
+                || !user.getRoles().contains(Role.CUSTOMER)
+                || !passwordEncoder.matches(password == null ? "" : password, user.getPasswordHash())) {
+            throw new InvalidCredentialsException();
+        }
+        return issueToken(user, user.getRoles());
+    }
+
+    @Transactional(readOnly = true)
+    public UUID customerIdForUsername(String username) {
+        User user = findByUsername(username);
+        if (!user.isEnabled() || !user.getRoles().contains(Role.CUSTOMER)) {
+            throw new org.springframework.security.access.AccessDeniedException("Customer account required");
+        }
+        return user.getId();
     }
 
     @Transactional
@@ -90,6 +123,16 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
 
+    @Transactional(readOnly = true)
+    public UserSummary userSummary(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        return new UserSummary(user.getUsername(), user.getDisplayName());
+    }
+
+    public record UserSummary(String username, String displayName) {
+    }
+
     private User createUser(String username, String displayName, String password, Set<Role> roles) {
         String normalizedUsername = username == null ? "" : username.trim().toLowerCase();
         if (userRepository.existsByUsernameIgnoreCase(normalizedUsername)) {
@@ -105,10 +148,12 @@ public class AuthService {
     private AuthController.AuthResponse issueToken(User user, Set<Role> roles) {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
-                .issuer("supermarket-erp")
+                .issuer(jwtIssuer)
                 .subject(user.getUsername())
                 .issuedAt(now)
                 .expiresAt(now.plusSeconds(jwtExpirationSeconds))
+                .claim("aud", List.of(jwtAudience))
+                .claim("jti", UUID.randomUUID().toString())
                 .claim("userId", user.getId().toString())
                 .claim("roles", roles.stream().map(Role::name).sorted().toList())
                 .build();

@@ -79,6 +79,19 @@ public class StockLevel {
         }
     }
 
+    /** Commits quantity reserved during online checkout. */
+    public Money sellReserved(Quantity quantityToSell, LocalDate today, int reorderPoint) {
+        Quantity reserved = totalReserved(quantityToSell.unitType());
+        if (!reserved.isGreaterThanOrEqualTo(quantityToSell)) {
+            throw new InsufficientStockException(productId, quantityToSell, reserved);
+        }
+
+        Money cost = deductReservedFefo(quantityToSell, today);
+        domainEvents.add(StockSold.of(productId, quantityToSell));
+        checkReorderPoint(reorderPoint);
+        return cost;
+    }
+
     /** Réserve du stock sans le déduire définitivement. */
     public void reserve(Quantity quantity) {
         reserve(quantity, today());
@@ -93,6 +106,26 @@ public class StockLevel {
         for (LotEntry entry : sortedByExpiry(today)) {
             if (remaining.isZero()) break;
             remaining = entry.reserve(remaining);
+        }
+    }
+
+    /** Releases a prior reservation while leaving on-hand stock unchanged. */
+    public void releaseReservation(Quantity quantity) {
+        Quantity reserved = totalReserved(quantity.unitType());
+        if (!reserved.isGreaterThanOrEqualTo(quantity)) {
+            throw new IllegalStateException(
+                    "Reserved stock is insufficient for release of " + quantity + " for product " + productId);
+        }
+
+        Quantity remaining = quantity;
+        for (LotEntry entry : lots.stream()
+                .filter(e -> !e.reserved().isZero())
+                .toList()) {
+            if (remaining.isZero()) break;
+            remaining = entry.releaseReservationUpTo(remaining);
+        }
+        if (!remaining.isZero()) {
+            throw new IllegalStateException("Could not release the full reservation for product " + productId);
         }
     }
 
@@ -136,6 +169,22 @@ public class StockLevel {
         return cost;
     }
 
+    private Money deductReservedFefo(Quantity quantityToSell, LocalDate today) {
+        Quantity remaining = quantityToSell;
+        Money cost = Money.zero();
+        for (LotEntry entry : lots.stream()
+                .filter(e -> !e.reserved().isZero())
+                .sorted((a, b) -> Long.compare(
+                        a.lot().daysUntilExpiry(today), b.lot().daysUntilExpiry(today)))
+                .toList()) {
+            if (remaining.isZero()) break;
+            Quantity before = remaining;
+            remaining = entry.deductReservedUpTo(remaining);
+            cost = cost.add(entry.costFor(before.subtract(remaining)));
+        }
+        return cost;
+    }
+
     private List<LotEntry> sortedByExpiry(LocalDate today) {
         return lots.stream()
                 .filter(e -> !e.onHand().isZero())
@@ -149,6 +198,14 @@ public class StockLevel {
         Quantity total = Quantity.zero(unitType);
         for (LotEntry entry : lots) {
             total = total.add(entry.available());
+        }
+        return total;
+    }
+
+    private Quantity totalReserved(Quantity.UnitType unitType) {
+        Quantity total = Quantity.zero(unitType);
+        for (LotEntry entry : lots) {
+            total = total.add(entry.reserved());
         }
         return total;
     }
