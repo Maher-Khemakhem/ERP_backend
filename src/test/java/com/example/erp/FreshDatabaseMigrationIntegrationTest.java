@@ -49,7 +49,12 @@ class FreshDatabaseMigrationIntegrationTest {
 
     @Test
     void freshInstallAndExistingDatabaseUpgradePreserveBusinessData() throws Exception {
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("18");
+        assertThat(flyway.info().current()).isNotNull();
+        assertThat(flyway.info().pending()).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT to_regclass('ecommerce.stripe_checkout')", String.class))
+                .isNotNull();
+        assertThat(jdbc.queryForObject("SELECT to_regclass('pos.stripe_checkout_legacy')", String.class))
+                .isNotNull();
 
         UUID productId = UUID.randomUUID();
         jdbc.update("""
@@ -58,7 +63,7 @@ class FreshDatabaseMigrationIntegrationTest {
                 VALUES (?, 'MIGRATION-TEST', 'Migration test product', 'EACH', false, 0, 19.00, true)
                 """, productId);
 
-        // A database already at V18 will not have the newly added V2.1 baseline
+        // A database already at the latest version can lack the added V2.1 baseline
         // in its history. Reapply it against populated tables to verify upgrades.
         jdbc.update("DELETE FROM platform.flyway_schema_history WHERE version = '2.1'");
         new FlywayConfig().flyway(dataSource).migrate();
