@@ -265,6 +265,14 @@ public class StorefrontOrderService {
         return orderRepository.save(order);
     }
 
+    @Transactional
+    public OnlineOrder completePickup(UUID orderId, String code, String staffUsername) {
+        OnlineOrder order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Online order not found: " + orderId));
+        order.completePickup(code, staffUsername);
+        return orderRepository.save(order);
+    }
+
     private CartSnapshot cartSnapshot(Cart cart) {
         List<CartItemSnapshot> items = cart.getItems().stream().map(item -> {
             StorefrontCatalogService.LineQuote quote = catalogService.quote(item.getProductId(), item.getQuantity())

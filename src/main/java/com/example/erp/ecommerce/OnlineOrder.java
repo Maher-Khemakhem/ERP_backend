@@ -15,15 +15,22 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
 @Entity
 @Table(name = "online_order", schema = "ecommerce")
 public class OnlineOrder {
+
+    private static final SecureRandom PICKUP_RANDOM = new SecureRandom();
 
     @Id
     private UUID id;
@@ -67,6 +74,15 @@ public class OnlineOrder {
 
     @Column(name = "expired_at")
     private Instant expiredAt;
+
+    @Column(name = "pickup_code", length = 12)
+    private String pickupCode;
+
+    @Column(name = "picked_up_at")
+    private Instant pickedUpAt;
+
+    @Column(name = "picked_up_by", length = 80)
+    private String pickedUpBy;
 
     @Version
     private long version;
@@ -158,14 +174,36 @@ public class OnlineOrder {
         boolean allowed = switch (status) {
             case CONFIRMED -> nextStatus == OnlineOrderStatus.PREPARING;
             case PREPARING -> nextStatus == OnlineOrderStatus.READY;
-            case READY -> nextStatus == OnlineOrderStatus.COMPLETED;
             default -> false;
         };
         if (!allowed) {
             throw new IllegalStateException(
                     "Online order cannot move from " + status + " to " + nextStatus);
         }
+        if (nextStatus == OnlineOrderStatus.READY) {
+            byte[] bytes = new byte[6];
+            PICKUP_RANDOM.nextBytes(bytes);
+            this.pickupCode = HexFormat.of().withUpperCase().formatHex(bytes);
+        }
         this.status = nextStatus;
+    }
+
+    public void completePickup(String code, String staffUsername) {
+        if (status != OnlineOrderStatus.READY || pickupCode == null) {
+            throw new IllegalStateException("Only a ready order can be collected");
+        }
+        if (code == null) {
+            throw new IllegalArgumentException("Invalid pickup code");
+        }
+        String normalized = code.replace("-", "").replace(" ", "").toUpperCase(Locale.ROOT);
+        if (!MessageDigest.isEqual(pickupCode.getBytes(StandardCharsets.US_ASCII),
+                normalized.getBytes(StandardCharsets.US_ASCII))) {
+            throw new IllegalArgumentException("Invalid pickup code");
+        }
+        this.pickedUpBy = Objects.requireNonNull(staffUsername, "staffUsername");
+        this.pickedUpAt = Instant.now();
+        this.pickupCode = null;
+        this.status = OnlineOrderStatus.COMPLETED;
     }
 
     public UUID getId() { return id; }
@@ -181,5 +219,8 @@ public class OnlineOrder {
     public Instant getExpiresAt() { return expiresAt; }
     public Instant getCancelledAt() { return cancelledAt; }
     public Instant getExpiredAt() { return expiredAt; }
+    public String getPickupCode() { return pickupCode; }
+    public Instant getPickedUpAt() { return pickedUpAt; }
+    public String getPickedUpBy() { return pickedUpBy; }
     public List<OnlineOrderLine> getLines() { return List.copyOf(lines); }
 }

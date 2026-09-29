@@ -2,10 +2,13 @@ package com.example.erp.ecommerce;
 
 import com.example.erp.auth.AuthService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,12 +32,16 @@ public class OnlineOrderStaffController {
     public record StatusRequest(@NotNull OnlineOrderStatus status) {
     }
 
+    public record PickupRequest(@NotBlank String code) {
+    }
+
     public record StaffOrderView(UUID id, String orderNumber, UUID customerId,
                                  String customerUsername, String customerName,
                                  String status, String netAmount, String vatAmount,
                                  String totalAmount, String paymentReference,
                                  String createdAt, String confirmedAt, String expiresAt,
-                                 String cancelledAt, String expiredAt,
+                                 String cancelledAt, String expiredAt, String pickedUpAt,
+                                 String pickedUpBy,
                                  List<StorefrontOrderController.OrderLineView> lines) {
         static StaffOrderView from(OnlineOrder order, AuthService authService) {
             AuthService.UserSummary customer = authService.userSummary(order.getCustomerId());
@@ -54,6 +61,8 @@ public class OnlineOrderStaffController {
                     order.getExpiresAt().toString(),
                     order.getCancelledAt() == null ? null : order.getCancelledAt().toString(),
                     order.getExpiredAt() == null ? null : order.getExpiredAt().toString(),
+                    order.getPickedUpAt() == null ? null : order.getPickedUpAt().toString(),
+                    order.getPickedUpBy(),
                     order.getLines().stream()
                             .map(StorefrontOrderController.OrderLineView::from)
                             .toList());
@@ -78,7 +87,15 @@ public class OnlineOrderStaffController {
         return StaffOrderView.from(orderService.advanceFulfillment(orderId, request.status()), authService);
     }
 
-    @org.springframework.web.bind.annotation.PostMapping("/{orderId}/cancel")
+    @PostMapping("/{orderId}/pickup")
+    public StaffOrderView completePickup(@PathVariable UUID orderId,
+                                         @Valid @RequestBody PickupRequest request,
+                                         Authentication authentication) {
+        return StaffOrderView.from(orderService.completePickup(orderId, request.code(),
+                authentication.getName()), authService);
+    }
+
+    @PostMapping("/{orderId}/cancel")
     public StaffOrderView cancelOrder(@PathVariable UUID orderId) {
         return StaffOrderView.from(orderService.cancelPendingOrderForStaff(orderId), authService);
     }

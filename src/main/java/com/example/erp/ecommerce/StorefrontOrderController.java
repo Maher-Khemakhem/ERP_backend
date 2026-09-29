@@ -78,6 +78,7 @@ public class StorefrontOrderController {
                             String vatAmount, String totalAmount, String paymentReference,
                             String createdAt, String confirmedAt, String expiresAt,
                             String cancelledAt, String expiredAt, String stripeStatus,
+                            String pickupCode,
                             List<OrderLineView> lines) {
         static OrderView from(OnlineOrder order, String stripeStatus) {
             return new OrderView(
@@ -94,6 +95,8 @@ public class StorefrontOrderController {
                     order.getCancelledAt() == null ? null : order.getCancelledAt().toString(),
                     order.getExpiredAt() == null ? null : order.getExpiredAt().toString(),
                     stripeStatus,
+                    order.getPickupCode() == null ? null : order.getPickupCode().substring(0, 6)
+                            + "-" + order.getPickupCode().substring(6),
                     order.getLines().stream().map(OrderLineView::from).toList());
         }
 
