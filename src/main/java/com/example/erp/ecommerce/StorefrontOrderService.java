@@ -13,7 +13,9 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class StorefrontOrderService {
@@ -21,6 +23,7 @@ public class StorefrontOrderService {
     private final AuthService authService;
     private final CartRepository cartRepository;
     private final OnlineOrderRepository orderRepository;
+    private final StorefrontStripeCheckoutRepository stripeCheckouts;
     private final StorefrontCatalogService catalogService;
     private final InventoryService inventoryService;
     private final ApplicationEventPublisher events;
@@ -29,6 +32,7 @@ public class StorefrontOrderService {
     StorefrontOrderService(AuthService authService,
                            CartRepository cartRepository,
                            OnlineOrderRepository orderRepository,
+                           StorefrontStripeCheckoutRepository stripeCheckouts,
                            StorefrontCatalogService catalogService,
                            InventoryService inventoryService,
                            ApplicationEventPublisher events,
@@ -36,6 +40,7 @@ public class StorefrontOrderService {
         this.authService = authService;
         this.cartRepository = cartRepository;
         this.orderRepository = orderRepository;
+        this.stripeCheckouts = stripeCheckouts;
         this.catalogService = catalogService;
         this.inventoryService = inventoryService;
         this.events = events;
@@ -124,16 +129,50 @@ public class StorefrontOrderService {
 
     @Transactional
     public OnlineOrder confirmPayment(String username, UUID orderId) {
+        if (stripeCheckouts.existsByOrderId(orderId)) {
+            throw new IllegalStateException("This order has a Stripe Checkout; demo payment is unavailable");
+        }
         UUID customerId = customerId(username);
         OnlineOrder order = orderRepository.findByIdAndCustomerId(orderId, customerId)
                 .orElseThrow(() -> new IllegalArgumentException("Online order not found: " + orderId));
+
+        return completeReservedOrder(order, "MOCK-CARD-" + order.getId(), "CARD", true);
+    }
+
+    @Transactional
+    public StorefrontStripeCheckout prepareStripeCheckout(String username, UUID orderId,
+            BigDecimal rate, long eurCents) {
+        var existing = stripeCheckouts.findByOrderId(orderId);
+        if (existing.isPresent()) {
+            getOrder(username, orderId);
+            return existing.get();
+        }
+        OnlineOrder order = orderRepository.findByIdAndCustomerId(orderId, customerId(username))
+                .orElseThrow(() -> new IllegalArgumentException("Online order not found: " + orderId));
+        // Stripe Checkout requires at least 30 minutes; allow five more minutes
+        // for webhook delivery before the stock reservation expires.
+        order.extendPaymentDeadline(Instant.now().plus(Duration.ofMinutes(35)));
+        orderRepository.save(order);
+        return stripeCheckouts.save(new StorefrontStripeCheckout(orderId,
+                order.getTotalAmount().amount(), rate, eurCents));
+    }
+
+    @Transactional
+    public OnlineOrder confirmStripePayment(UUID orderId, String paymentReference) {
+        OnlineOrder order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Online order not found: " + orderId));
+        return completeReservedOrder(order, paymentReference, "STRIPE", false);
+    }
+
+    private OnlineOrder completeReservedOrder(OnlineOrder order, String paymentReference,
+                                               String paymentMethod, boolean expireIfDue) {
 
         if (order.getStatus() == OnlineOrderStatus.CONFIRMED) {
             return order;
         }
 
         Instant now = Instant.now();
-        if (order.expireIfDue(now)) {
+        if (expireIfDue && order.expireIfDue(now)) {
             releaseReservedStock(order);
             return orderRepository.save(order);
         }
@@ -147,16 +186,27 @@ public class StorefrontOrderService {
                     inventoryService.sellReserved(line.getProductId(), line.getQuantity()));
         }
 
-        String paymentReference = "MOCK-CARD-" + order.getId();
         order.confirmPayment(paymentReference);
         OnlineOrder saved = orderRepository.save(order);
-        events.publishEvent(OnlineOrderConfirmed.of(saved, "CARD", costOfGoodsSold));
+        events.publishEvent(OnlineOrderConfirmed.of(saved, paymentMethod, costOfGoodsSold));
         return saved;
     }
 
     @Transactional(readOnly = true)
     public List<OnlineOrder> listOrders(String username) {
         return orderRepository.findAllByCustomerIdOrderByCreatedAtDesc(customerId(username));
+    }
+
+    @Transactional(readOnly = true)
+    public Map<UUID, String> stripeStatuses(List<OnlineOrder> orders) {
+        if (orders.isEmpty()) return Map.of();
+        return stripeCheckouts.findByOrderIdIn(orders.stream().map(OnlineOrder::getId).toList())
+                .stream().collect(Collectors.toMap(checkout -> checkout.orderId, checkout -> checkout.status));
+    }
+
+    @Transactional(readOnly = true)
+    public String stripeStatus(UUID orderId) {
+        return stripeCheckouts.findByOrderId(orderId).map(checkout -> checkout.status).orElse(null);
     }
 
     @Transactional(readOnly = true)
@@ -240,6 +290,10 @@ public class StorefrontOrderService {
     }
 
     private OnlineOrder cancelPendingOrder(OnlineOrder order) {
+        if (stripeCheckouts.findByOrderId(order.getId())
+                .filter(checkout -> !"EXPIRED".equals(checkout.status)).isPresent()) {
+            throw new IllegalStateException("An active Stripe Checkout cannot be cancelled from the store");
+        }
         Instant now = Instant.now();
         if (order.expireIfDue(now)) {
             releaseReservedStock(order);

@@ -122,6 +122,13 @@ public class OnlineOrder {
         this.status = OnlineOrderStatus.CONFIRMED;
     }
 
+    public void extendPaymentDeadline(Instant deadline) {
+        if (status != OnlineOrderStatus.PENDING_PAYMENT || !Instant.now().isBefore(expiresAt)) {
+            throw new IllegalStateException("Only an unexpired pending order can start Stripe Checkout");
+        }
+        if (deadline.isAfter(expiresAt)) this.expiresAt = deadline;
+    }
+
     public boolean cancelPendingPayment(Instant now) {
         if (status == OnlineOrderStatus.CANCELLED || status == OnlineOrderStatus.EXPIRED) {
             return false;

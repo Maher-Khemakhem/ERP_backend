@@ -6,12 +6,26 @@ import com.example.erp.shared.Quantity;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class OnlineOrderTest {
+
+    @Test
+    void stripeCheckoutExtendsReservationOnlyWhileOrderIsPending() {
+        OnlineOrder order = OnlineOrder.create(UUID.randomUUID(), List.of(
+                org.mockito.Mockito.mock(OnlineOrderLine.class)), Money.of(10), Money.zero(), Money.of(10));
+        Instant later = Instant.now().plusSeconds(35 * 60);
+        order.extendPaymentDeadline(later);
+        assertThat(order.getExpiresAt()).isEqualTo(later);
+        order.confirmPayment("STRIPE-test");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                order.extendPaymentDeadline(Instant.now().plusSeconds(60 * 60)))
+                .isInstanceOf(IllegalStateException.class);
+    }
 
     @Test
     void paymentConfirmationMovesPendingOrderToConfirmedAndIsIdempotent() {

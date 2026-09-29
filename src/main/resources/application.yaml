@@ -49,6 +49,11 @@ server:
   port: 8080
 
 app:
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+    storefront-return-base-url: ${STRIPE_STOREFRONT_RETURN_BASE_URL:}
+    tnd-to-eur-rate: ${STRIPE_TND_TO_EUR_RATE:0}
   ecommerce:
     payment-timeout-minutes: ${ECOMMERCE_PAYMENT_TIMEOUT_MINUTES:15}
     expiry-scan-interval-ms: ${ECOMMERCE_EXPIRY_SCAN_INTERVAL_MS:60000}

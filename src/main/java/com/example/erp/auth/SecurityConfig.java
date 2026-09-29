@@ -99,6 +99,7 @@ class SecurityConfig {
                         .requestMatchers("/uploads/products/**").permitAll()
                         // The pairing token is the authentication mechanism for the phone scanner.
                         .requestMatchers("/api/pos/scanner-sessions/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/store/stripe/webhook").permitAll()
                         // Shared staff reads must exclude self-registered CUSTOMER accounts.
                         .requestMatchers(HttpMethod.GET,
                                 "/api/inventory/products/**",

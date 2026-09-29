@@ -124,5 +124,6 @@ public class PosTransaction {
     public int hashCode() { return id.hashCode(); }
 
     public enum TransactionStatus { IN_PROGRESS, COMPLETED, VOIDED }
-    public enum PaymentMethod { CASH, CARD }
+    // STRIPE remains readable for tickets created before POS Checkout was retired.
+    public enum PaymentMethod { CASH, CARD, STRIPE }
 }

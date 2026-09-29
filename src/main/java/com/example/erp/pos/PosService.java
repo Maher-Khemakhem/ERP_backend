@@ -100,6 +100,13 @@ public class PosService {
 
     @Transactional
     public void completeTransaction(UUID transactionId, PosTransaction.PaymentMethod paymentMethod, Money amountReceived) {
+        if (paymentMethod == PosTransaction.PaymentMethod.STRIPE) {
+            throw new IllegalArgumentException("POS Stripe payments are no longer supported");
+        }
+        completeVerifiedTransaction(transactionId, paymentMethod, amountReceived);
+    }
+
+    private void completeVerifiedTransaction(UUID transactionId, PosTransaction.PaymentMethod paymentMethod, Money amountReceived) {
         PosTransaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new IllegalArgumentException("Ticket not found: " + transactionId));
 

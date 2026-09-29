@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -72,6 +73,14 @@ class PosServiceTest {
         verify(inventoryService).sell(secondProductId, Quantity.kg(0.5));
         verify(transactionRepository).save(transaction);
         assertThat(transaction.getStatus()).isEqualTo(PosTransaction.TransactionStatus.COMPLETED);
+    }
+
+    @Test
+    void completeTransaction_rejectsRetiredStripeMethod() {
+        assertThatThrownBy(() -> posService.completeTransaction(UUID.randomUUID(), PosTransaction.PaymentMethod.STRIPE))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no longer supported");
+        verifyNoInteractions(inventoryService);
     }
 
     @Test

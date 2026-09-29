@@ -77,8 +77,9 @@ public class StorefrontOrderController {
     public record OrderView(UUID id, String orderNumber, String status, String netAmount,
                             String vatAmount, String totalAmount, String paymentReference,
                             String createdAt, String confirmedAt, String expiresAt,
-                            String cancelledAt, String expiredAt, List<OrderLineView> lines) {
-        static OrderView from(OnlineOrder order) {
+                            String cancelledAt, String expiredAt, String stripeStatus,
+                            List<OrderLineView> lines) {
+        static OrderView from(OnlineOrder order, String stripeStatus) {
             return new OrderView(
                     order.getId(),
                     order.getOrderNumber(),
@@ -92,8 +93,11 @@ public class StorefrontOrderController {
                     order.getExpiresAt().toString(),
                     order.getCancelledAt() == null ? null : order.getCancelledAt().toString(),
                     order.getExpiredAt() == null ? null : order.getExpiredAt().toString(),
+                    stripeStatus,
                     order.getLines().stream().map(OrderLineView::from).toList());
         }
+
+        static OrderView from(OnlineOrder order) { return from(order, null); }
     }
 
     @GetMapping("/cart")
@@ -137,17 +141,21 @@ public class StorefrontOrderController {
 
     @GetMapping("/orders")
     public List<OrderView> orders(Authentication authentication) {
-        return orderService.listOrders(authentication.getName()).stream().map(OrderView::from).toList();
+        var orders = orderService.listOrders(authentication.getName());
+        var statuses = orderService.stripeStatuses(orders);
+        return orders.stream().map(order -> OrderView.from(order, statuses.get(order.getId()))).toList();
     }
 
     @GetMapping("/orders/{orderId}")
     public OrderView order(Authentication authentication, @PathVariable UUID orderId) {
-        return OrderView.from(orderService.getOrder(authentication.getName(), orderId));
+        return OrderView.from(orderService.getOrder(authentication.getName(), orderId),
+                orderService.stripeStatus(orderId));
     }
 
     @PostMapping("/orders/{orderId}/cancel")
     public OrderView cancelOrder(Authentication authentication, @PathVariable UUID orderId) {
-        return OrderView.from(orderService.cancelPendingOrder(authentication.getName(), orderId));
+        return OrderView.from(orderService.cancelPendingOrder(authentication.getName(), orderId),
+                orderService.stripeStatus(orderId));
     }
 
     private static Quantity parseQuantity(BigDecimal value, String unitType) {
